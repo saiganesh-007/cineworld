@@ -2,31 +2,51 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 
 import {
+  getMovieDetails,
+  getMovieCredits,
+  getMovieVideos,
   getTVDetails,
   getTVCredits,
   getTVVideos,
   getImageUrl,
 } from "../services/tmdb";
 
+import Reviews from "../components/Reviews";
+
 const API_URL = "http://127.0.0.1:5001/api";
 
 function Details() {
   const { id } = useParams();
 
-  const [show, setShow] = useState(null);
+  // Detect movie or TV from URL
+  const isMovie = window.location.pathname.startsWith("/movie");
+
+  const mediaType = isMovie ? "movie" : "tv";
+
+  const [details, setDetails] = useState(null);
 
   const [credits, setCredits] = useState({
-    creators: [],
     cast: [],
+    crew: [],
+    creators: [],
   });
 
   const [trailer, setTrailer] = useState(null);
+
   const [loading, setLoading] = useState(true);
 
+  const [error, setError] = useState(false);
+
   const [isFavorite, setIsFavorite] = useState(false);
+
   const [isWatchlisted, setIsWatchlisted] = useState(false);
 
+  const [favoriteId, setFavoriteId] = useState(null);
+
+  const [watchlistId, setWatchlistId] = useState(null);
+
   const [actionLoading, setActionLoading] = useState(false);
+
   const [message, setMessage] = useState("");
 
   const user = JSON.parse(
@@ -41,27 +61,44 @@ function Details() {
     async function fetchDetails() {
       try {
         setLoading(true);
+        setError(false);
 
-        const [showData, creditData, videoData] =
-          await Promise.all([
-            getTVDetails(id),
-            getTVCredits(id),
-            getTVVideos(id),
-          ]);
+        let detailData;
+        let creditData;
+        let videoData;
 
-        setShow(showData);
-        setCredits(creditData);
+        if (isMovie) {
+          detailData = await getMovieDetails(id);
+          creditData = await getMovieCredits(id);
+          videoData = await getMovieVideos(id);
+        } else {
+          detailData = await getTVDetails(id);
+          creditData = await getTVCredits(id);
+          videoData = await getTVVideos(id);
+        }
 
-        // Official trailer
-        const officialTrailer = videoData.find(
+        setDetails(detailData);
+
+        setCredits(
+          creditData || {
+            cast: [],
+            crew: [],
+            creators: [],
+          }
+        );
+
+        // ==========================================
+        // FIND TRAILER
+        // ==========================================
+
+        const officialTrailer = (videoData || []).find(
           (video) =>
             video.site === "YouTube" &&
             video.type === "Trailer" &&
             video.official === true
         );
 
-        // Any trailer
-        const anyTrailer = videoData.find(
+        const anyTrailer = (videoData || []).find(
           (video) =>
             video.site === "YouTube" &&
             video.type === "Trailer"
@@ -72,18 +109,21 @@ function Details() {
             anyTrailer ||
             null
         );
+
       } catch (error) {
         console.error(
-          "TV / Anime details error:",
+          "Details error:",
           error
         );
+
+        setError(true);
       } finally {
         setLoading(false);
       }
     }
 
     fetchDetails();
-  }, [id]);
+  }, [id, isMovie]);
 
   // ==========================================
   // CHECK FAVORITES + WATCHLIST
@@ -94,22 +134,28 @@ function Details() {
 
     async function checkSavedItems() {
       try {
-        const [favoritesResponse, watchlistResponse] =
-          await Promise.all([
-            fetch(
-              `${API_URL}/favorites/${user.id}`
-            ),
-            fetch(
-              `${API_URL}/watchlist/${user.id}`
-            ),
-          ]);
+        const [
+          favoritesResponse,
+          watchlistResponse,
+        ] = await Promise.all([
+          fetch(
+            `${API_URL}/favorites/${user.id}`
+          ),
+          fetch(
+            `${API_URL}/watchlist/${user.id}`
+          ),
+        ]);
 
         if (!favoritesResponse.ok) {
-          throw new Error("Failed to load favorites");
+          throw new Error(
+            "Failed to load favorites"
+          );
         }
 
         if (!watchlistResponse.ok) {
-          throw new Error("Failed to load watchlist");
+          throw new Error(
+            "Failed to load watchlist"
+          );
         }
 
         const favoritesData =
@@ -118,40 +164,73 @@ function Details() {
         const watchlistData =
           await watchlistResponse.json();
 
-        const favoriteExists =
-          (favoritesData.favorites || []).some(
+        // ==========================================
+        // FIND FAVORITE
+        // ==========================================
+
+        const favoriteItem =
+          (favoritesData.favorites || []).find(
             (item) =>
-              String(item.movie_id) === String(id) &&
-              item.media_type === "tv"
+              String(item.movie_id) ===
+                String(id) &&
+              item.media_type === mediaType
           );
 
-        const watchlistExists =
-          (watchlistData.watchlist || []).some(
+        // ==========================================
+        // FIND WATCHLIST
+        // ==========================================
+
+        const watchlistItem =
+          (watchlistData.watchlist || []).find(
             (item) =>
-              String(item.movie_id) === String(id) &&
-              item.media_type === "tv"
+              String(item.movie_id) ===
+                String(id) &&
+              item.media_type === mediaType
           );
 
-        setIsFavorite(favoriteExists);
-        setIsWatchlisted(watchlistExists);
+        if (favoriteItem) {
+          setIsFavorite(true);
+
+          setFavoriteId(
+            favoriteItem.id
+          );
+        } else {
+          setIsFavorite(false);
+          setFavoriteId(null);
+        }
+
+        if (watchlistItem) {
+          setIsWatchlisted(true);
+
+          setWatchlistId(
+            watchlistItem.id
+          );
+        } else {
+          setIsWatchlisted(false);
+          setWatchlistId(null);
+        }
+
       } catch (error) {
         console.error(
-          "Check saved items error:",
+          "Saved items error:",
           error
         );
       }
     }
 
     checkSavedItems();
-  }, [id]);
+  }, [id, mediaType, user]);
 
   // ==========================================
-  // ADD / REMOVE FAVORITE
+  // FAVORITE
   // ==========================================
 
   async function handleFavorite() {
     if (!user) {
-      setMessage("Please login first.");
+      setMessage(
+        "Please login first."
+      );
+
       return;
     }
 
@@ -159,56 +238,97 @@ function Details() {
       setActionLoading(true);
       setMessage("");
 
-      // REMOVE
+      // ==========================================
+      // REMOVE FAVORITE
+      // ==========================================
+
       if (isFavorite) {
+        if (!favoriteId) {
+          throw new Error(
+            "Favorite ID not found"
+          );
+        }
+
         const response = await fetch(
-          `${API_URL}/favorites/${getFavoriteId()}`,
+          `${API_URL}/favorites/${favoriteId}`,
           {
             method: "DELETE",
           }
         );
 
-        const data = await response.json();
+        const data =
+          await response.json();
 
         if (!response.ok) {
           throw new Error(
-            data.message || "Failed to remove favorite"
+            data.message ||
+              "Failed to remove favorite"
           );
         }
 
         setIsFavorite(false);
-        setMessage("Removed from Favorites ❤️");
+        setFavoriteId(null);
+
+        setMessage(
+          "Removed from Favorites ❤️"
+        );
+
         return;
       }
 
-      // ADD
+      // ==========================================
+      // ADD FAVORITE
+      // ==========================================
+
+      const title = isMovie
+        ? details.title
+        : details.name;
+
       const response = await fetch(
         `${API_URL}/favorites`,
         {
           method: "POST",
+
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
           },
+
           body: JSON.stringify({
             user_id: user.id,
+
             movie_id: Number(id),
-            media_type: "tv",
-            title: show.name,
-            poster_path: show.poster_path,
+
+            media_type: mediaType,
+
+            title: title,
+
+            poster_path:
+              details.poster_path,
           }),
         }
       );
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       if (!response.ok) {
         throw new Error(
-          data.message || "Failed to add favorite"
+          data.message ||
+            "Failed to add favorite"
         );
       }
 
       setIsFavorite(true);
-      setMessage("Added to Favorites ❤️");
+
+      if (data.id) {
+        setFavoriteId(data.id);
+      }
+
+      setMessage(
+        "Added to Favorites ❤️"
+      );
+
     } catch (error) {
       console.error(
         "Favorite error:",
@@ -216,28 +336,25 @@ function Details() {
       );
 
       setMessage(
-        error.message || "Unable to update Favorites."
+        error.message ||
+          "Unable to update Favorites."
       );
+
     } finally {
       setActionLoading(false);
     }
   }
 
   // ==========================================
-  // GET FAVORITE ID
-  // ==========================================
-
-  function getFavoriteId() {
-    return window.__cineworldFavoriteId;
-  }
-
-  // ==========================================
-  // ADD / REMOVE WATCHLIST
+  // WATCHLIST
   // ==========================================
 
   async function handleWatchlist() {
     if (!user) {
-      setMessage("Please login first.");
+      setMessage(
+        "Please login first."
+      );
+
       return;
     }
 
@@ -245,34 +362,97 @@ function Details() {
       setActionLoading(true);
       setMessage("");
 
-      // ADD
+      // ==========================================
+      // REMOVE WATCHLIST
+      // ==========================================
+
+      if (isWatchlisted) {
+        if (!watchlistId) {
+          throw new Error(
+            "Watchlist ID not found"
+          );
+        }
+
+        const response = await fetch(
+          `${API_URL}/watchlist/${watchlistId}`,
+          {
+            method: "DELETE",
+          }
+        );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.message ||
+              "Failed to remove watchlist"
+          );
+        }
+
+        setIsWatchlisted(false);
+        setWatchlistId(null);
+
+        setMessage(
+          "Removed from Watchlist 🔖"
+        );
+
+        return;
+      }
+
+      // ==========================================
+      // ADD WATCHLIST
+      // ==========================================
+
+      const title = isMovie
+        ? details.title
+        : details.name;
+
       const response = await fetch(
         `${API_URL}/watchlist`,
         {
           method: "POST",
+
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
           },
+
           body: JSON.stringify({
             user_id: user.id,
+
             movie_id: Number(id),
-            media_type: "tv",
-            title: show.name,
-            poster_path: show.poster_path,
+
+            media_type: mediaType,
+
+            title: title,
+
+            poster_path:
+              details.poster_path,
           }),
         }
       );
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       if (!response.ok) {
         throw new Error(
-          data.message || "Failed to add watchlist"
+          data.message ||
+            "Failed to add watchlist"
         );
       }
 
       setIsWatchlisted(true);
-      setMessage("Added to Watchlist 🔖");
+
+      if (data.id) {
+        setWatchlistId(data.id);
+      }
+
+      setMessage(
+        "Added to Watchlist 🔖"
+      );
+
     } catch (error) {
       console.error(
         "Watchlist error:",
@@ -283,6 +463,7 @@ function Details() {
         error.message ||
           "Unable to update Watchlist."
       );
+
     } finally {
       setActionLoading(false);
     }
@@ -294,8 +475,15 @@ function Details() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <p className="text-gray-400 text-lg">
+      <div className="
+        min-h-screen
+        bg-black
+        text-white
+        flex
+        items-center
+        justify-center
+      ">
+        <p className="text-gray-400">
           Loading...
         </p>
       </div>
@@ -303,99 +491,193 @@ function Details() {
   }
 
   // ==========================================
-  // NOT FOUND
+  // ERROR / NOT FOUND
   // ==========================================
 
-  if (!show || show.success === false) {
+  if (
+    error ||
+    !details ||
+    details.success === false
+  ) {
     return (
-      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center px-6">
-        <h1 className="text-3xl font-bold mb-4">
-          Not found
+      <div className="
+        min-h-screen
+        bg-black
+        text-white
+        flex
+        flex-col
+        items-center
+        justify-center
+        px-6
+      ">
+
+        <h1 className="
+          text-3xl
+          font-bold
+          mb-4
+        ">
+          {isMovie
+            ? "Movie not found"
+            : "Show not found"}
         </h1>
 
+        <p className="
+          text-gray-500
+          mb-6
+          text-center
+        ">
+          We couldn't load this title.
+        </p>
+
         <Link
-          to="/"
-          className="text-red-500 hover:text-red-400"
+          to={
+            isMovie
+              ? "/movies"
+              : "/webseries"
+          }
+          className="
+            text-red-500
+            hover:text-red-400
+          "
         >
-          ← Back to Home
+          ← Back
         </Link>
+
       </div>
     );
   }
 
+  // ==========================================
+  // TITLE / DATE
+  // ==========================================
+
+  const title = isMovie
+    ? details.title
+    : details.name;
+
+  const releaseDate = isMovie
+    ? details.release_date
+    : details.first_air_date;
+
+  // ==========================================
+  // DIRECTOR / CREATOR
+  // ==========================================
+
+  const creators =
+    isMovie
+      ? credits.crew
+          ?.filter(
+            (person) =>
+              person.job === "Director"
+          )
+          .slice(0, 5)
+      : credits.creators || [];
+
   return (
-    <div className="min-h-screen bg-black text-white">
+    <main className="
+      min-h-screen
+      bg-black
+      text-white
+    ">
 
-      {/* BACKDROP */}
+      {/* ==========================================
+          BACKDROP
+      ========================================== */}
 
-      {show.backdrop_path && (
-        <div className="relative w-full h-[420px] overflow-hidden">
+      {details.backdrop_path && (
+        <div className="
+          relative
+          w-full
+          h-[420px]
+          overflow-hidden
+        ">
 
           <img
-            src={`https://image.tmdb.org/t/p/original${show.backdrop_path}`}
-            alt={show.name}
-            className="w-full h-full object-cover"
-          />
-
-          <div
+            src={getImageUrl(
+              details.backdrop_path,
+              "original"
+            )}
+            alt={title}
             className="
-              absolute
-              inset-0
-              bg-gradient-to-t
-              from-black
-              via-black/60
-              to-transparent
+              w-full
+              h-full
+              object-cover
             "
           />
+
+          <div className="
+            absolute
+            inset-0
+            bg-gradient-to-t
+            from-black
+            via-black/60
+            to-transparent
+          " />
 
         </div>
       )}
 
-      {/* MAIN */}
+      {/* ==========================================
+          MAIN CONTENT
+      ========================================== */}
 
       <div
-        className={`max-w-7xl mx-auto px-6 ${
-          show.backdrop_path
-            ? "-mt-32 relative z-10"
-            : "pt-10"
-        }`}
+        className={`
+          max-w-7xl
+          mx-auto
+          px-6
+          ${
+            details.backdrop_path
+              ? "-mt-32 relative z-10"
+              : "pt-10"
+          }
+        `}
       >
 
-        {/* POSTER + DETAILS */}
+        {/* ==========================================
+            POSTER + DETAILS
+        ========================================== */}
 
-        <div className="flex flex-col md:flex-row gap-8">
+        <div className="
+          flex
+          flex-col
+          md:flex-row
+          gap-8
+        ">
 
           {/* POSTER */}
 
-          <div className="flex-shrink-0">
+          <div className="
+            flex-shrink-0
+          ">
 
-            {show.poster_path ? (
+            {details.poster_path ? (
               <img
-                src={getImageUrl(show.poster_path)}
-                alt={show.name}
+                src={getImageUrl(
+                  details.poster_path
+                )}
+                alt={title}
                 className="
-                  w-64
-                  md:w-72
-                  rounded-2xl
+                  w-56
+                  md:w-64
+                  rounded-xl
                   shadow-2xl
                   border
                   border-white/10
                 "
               />
             ) : (
-              <div
-                className="
-                  w-64
-                  md:w-72
-                  h-96
-                  bg-zinc-900
-                  rounded-2xl
-                  flex
-                  items-center
-                  justify-center
-                  text-gray-500
-                "
-              >
+              <div className="
+                w-56
+                md:w-64
+                h-80
+                bg-zinc-900
+                rounded-xl
+                flex
+                items-center
+                justify-center
+                text-gray-500
+              ">
                 No Image
               </div>
             )}
@@ -404,112 +686,149 @@ function Details() {
 
           {/* DETAILS */}
 
-          <div className="flex-1 pt-4">
+          <div className="
+            flex-1
+            pt-2
+          ">
 
-            <h1
-              className="
-                text-4xl
-                md:text-6xl
-                font-bold
-                mb-5
-              "
-            >
-              {show.name}
+            {/* TITLE */}
+
+            <h1 className="
+              text-3xl
+              md:text-5xl
+              font-bold
+              mb-4
+            ">
+              {title}
             </h1>
 
-            {/* YEAR / RATING / SEASONS */}
+            {/* META */}
 
-            <div
-              className="
-                flex
-                flex-wrap
-                items-center
-                gap-4
-                text-gray-400
-                mb-6
-              "
-            >
+            <div className="
+              flex
+              flex-wrap
+              items-center
+              gap-4
+              text-gray-400
+              mb-5
+            ">
+
               <span>
-                {show.first_air_date?.slice(0, 4) ||
-                  "N/A"}
+                {releaseDate?.slice(
+                  0,
+                  4
+                ) || "N/A"}
               </span>
 
               <span>
                 ⭐{" "}
-                {show.vote_average
-                  ? show.vote_average.toFixed(1)
+                {details.vote_average
+                  ? details.vote_average.toFixed(
+                      1
+                    )
                   : "N/A"}
               </span>
 
-              <span>
-                {show.number_of_seasons || 0} Seasons
-              </span>
+              {!isMovie && (
+                <>
+                  <span>
+                    {details.number_of_seasons ||
+                      0}{" "}
+                    Seasons
+                  </span>
 
-              <span>
-                {show.number_of_episodes || 0} Episodes
-              </span>
+                  <span>
+                    {details.number_of_episodes ||
+                      0}{" "}
+                    Episodes
+                  </span>
+                </>
+              )}
+
+              {isMovie &&
+                details.runtime && (
+                  <span>
+                    {Math.floor(
+                      details.runtime / 60
+                    )}h{" "}
+                    {details.runtime % 60}m
+                  </span>
+                )}
+
             </div>
 
             {/* GENRES */}
 
-            {show.genres?.length > 0 && (
-              <div
-                className="
-                  flex
-                  flex-wrap
-                  gap-2
-                  mb-7
-                "
-              >
-                {show.genres.map((genre) => (
-                  <span
-                    key={genre.id}
-                    className="
-                      bg-white/10
-                      border
-                      border-white/10
-                      px-4
-                      py-1.5
-                      rounded-full
-                      text-sm
-                      text-gray-300
-                    "
-                  >
-                    {genre.name}
-                  </span>
-                ))}
+            {details.genres?.length > 0 && (
+              <div className="
+                flex
+                flex-wrap
+                gap-2
+                mb-6
+              ">
+
+                {details.genres.map(
+                  (genre) => (
+                    <span
+                      key={genre.id}
+                      className="
+                        bg-white/10
+                        border
+                        border-white/10
+                        px-3
+                        py-1
+                        rounded-full
+                        text-sm
+                        text-gray-300
+                      "
+                    >
+                      {genre.name}
+                    </span>
+                  )
+                )}
+
               </div>
             )}
 
             {/* OVERVIEW */}
 
-            <h2 className="text-2xl font-bold mb-3">
+            <h2 className="
+              text-xl
+              font-bold
+              mb-3
+            ">
               Overview
             </h2>
 
-            <p
-              className="
-                text-gray-300
-                leading-8
-                max-w-4xl
-              "
-            >
-              {show.overview ||
+            <p className="
+              text-gray-300
+              leading-7
+              max-w-4xl
+            ">
+              {details.overview ||
                 "No description available."}
             </p>
 
-            {/* SAVE BUTTONS */}
+            {/* ==========================================
+                FAVORITE + WATCHLIST
+            ========================================== */}
 
-            <div className="flex flex-wrap gap-4 mt-8">
+            <div className="
+              flex
+              flex-wrap
+              gap-3
+              mt-7
+            ">
 
               <button
                 onClick={handleFavorite}
                 disabled={actionLoading}
                 className={`
-                  px-6
-                  py-3
+                  px-5
+                  py-2.5
                   rounded-lg
                   font-semibold
+                  text-sm
                   transition
                   ${
                     isFavorite
@@ -526,25 +845,24 @@ function Details() {
 
               <button
                 onClick={handleWatchlist}
-                disabled={
-                  actionLoading || isWatchlisted
-                }
+                disabled={actionLoading}
                 className={`
-                  px-6
-                  py-3
+                  px-5
+                  py-2.5
                   rounded-lg
                   font-semibold
+                  text-sm
                   transition
                   ${
                     isWatchlisted
-                      ? "bg-zinc-700"
+                      ? "bg-zinc-700 hover:bg-zinc-600"
                       : "bg-white/10 hover:bg-white/20"
                   }
                   disabled:opacity-50
                 `}
               >
                 {isWatchlisted
-                  ? "🔖 In Watchlist"
+                  ? "🔖 Remove Watchlist"
                   : "🔖 Add to Watchlist"}
               </button>
 
@@ -553,12 +871,18 @@ function Details() {
             {/* MESSAGE */}
 
             {message && (
-              <p className="mt-4 text-sm text-gray-400">
+              <p className="
+                mt-3
+                text-sm
+                text-gray-400
+              ">
                 {message}
               </p>
             )}
 
-            {/* TRAILER */}
+            {/* ==========================================
+                TRAILER
+            ========================================== */}
 
             {trailer ? (
               <a
@@ -569,14 +893,15 @@ function Details() {
                   inline-flex
                   items-center
                   gap-2
-                  mt-7
+                  mt-6
                   bg-red-600
                   hover:bg-red-700
                   text-white
-                  px-6
-                  py-3
+                  px-5
+                  py-2.5
                   rounded-lg
                   font-semibold
+                  text-sm
                   transition
                 "
               >
@@ -589,13 +914,14 @@ function Details() {
                   inline-flex
                   items-center
                   gap-2
-                  mt-7
+                  mt-6
                   bg-zinc-800
                   text-gray-500
-                  px-6
-                  py-3
+                  px-5
+                  py-2.5
                   rounded-lg
                   font-semibold
+                  text-sm
                 "
               >
                 🎬 Trailer Unavailable
@@ -603,31 +929,40 @@ function Details() {
             )}
 
           </div>
+
         </div>
 
-        {/* CAST */}
+        {/* ==========================================
+            CAST
+        ========================================== */}
 
         {credits.cast?.length > 0 && (
           <section className="mt-14">
 
-            <h2 className="text-2xl font-bold mb-6">
+            <h2 className="
+              text-2xl
+              font-bold
+              mb-5
+            ">
               Cast
             </h2>
 
-            <div
-              className="
-                flex
-                gap-5
-                overflow-x-auto
-                pb-5
-              "
-            >
+            <div className="
+              flex
+              gap-4
+              overflow-x-auto
+              pb-5
+            ">
+
               {credits.cast
                 .slice(0, 20)
                 .map((person) => (
                   <div
                     key={person.id}
-                    className="flex-shrink-0 w-32"
+                    className="
+                      flex-shrink-0
+                      w-28
+                    "
                   >
 
                     {person.profile_path ? (
@@ -637,155 +972,91 @@ function Details() {
                         )}
                         alt={person.name}
                         className="
-                          w-32
-                          h-44
+                          w-28
+                          h-40
                           object-cover
-                          rounded-xl
+                          rounded-lg
                         "
                       />
                     ) : (
-                      <div
-                        className="
-                          w-32
-                          h-44
-                          bg-zinc-900
-                          rounded-xl
-                          flex
-                          items-center
-                          justify-center
-                          text-gray-600
-                          text-xs
-                        "
-                      >
+                      <div className="
+                        w-28
+                        h-40
+                        bg-zinc-900
+                        rounded-lg
+                        flex
+                        items-center
+                        justify-center
+                        text-gray-600
+                        text-xs
+                      ">
                         No Image
                       </div>
                     )}
 
-                    <p
-                      className="
-                        text-white
-                        text-sm
-                        font-semibold
-                        mt-3
-                        truncate
-                      "
-                    >
+                    <p className="
+                      text-white
+                      text-sm
+                      font-semibold
+                      mt-2
+                      truncate
+                    ">
                       {person.name}
                     </p>
 
-                    <p
-                      className="
-                        text-gray-500
-                        text-xs
-                        mt-1
-                        truncate
-                      "
-                    >
-                      {person.character || "Cast"}
+                    <p className="
+                      text-gray-500
+                      text-xs
+                      mt-1
+                      truncate
+                    ">
+                      {person.character ||
+                        "Cast"}
                     </p>
 
                   </div>
                 ))}
+
             </div>
 
           </section>
         )}
 
-        {/* INFORMATION */}
+        {/* ==========================================
+            CREATOR / DIRECTOR
+        ========================================== */}
 
-        <section
-          className="
-            mt-12
+        {creators?.length > 0 && (
+          <section className="
+            mt-10
             border-t
             border-white/10
             pt-8
-            pb-16
-          "
-        >
+          ">
 
-          <h2 className="text-2xl font-bold mb-6">
-            Information
-          </h2>
+            <h2 className="
+              text-xl
+              font-bold
+              mb-4
+            ">
+              {isMovie
+                ? "Director"
+                : "Creators"}
+            </h2>
 
-          <div
-            className="
-              grid
-              grid-cols-1
-              sm:grid-cols-2
-              lg:grid-cols-3
-              gap-6
-            "
-          >
+            <div className="
+              flex
+              flex-wrap
+              gap-3
+            ">
 
-            {show.status && (
-              <div>
-                <p className="text-gray-500 text-sm mb-1">
-                  Status
-                </p>
-                <p>{show.status}</p>
-              </div>
-            )}
-
-            {show.original_language && (
-              <div>
-                <p className="text-gray-500 text-sm mb-1">
-                  Original Language
-                </p>
-                <p className="uppercase">
-                  {show.original_language}
-                </p>
-              </div>
-            )}
-
-            {show.first_air_date && (
-              <div>
-                <p className="text-gray-500 text-sm mb-1">
-                  First Air Date
-                </p>
-                <p>{show.first_air_date}</p>
-              </div>
-            )}
-
-            {show.last_air_date && (
-              <div>
-                <p className="text-gray-500 text-sm mb-1">
-                  Last Air Date
-                </p>
-                <p>{show.last_air_date}</p>
-              </div>
-            )}
-
-            <div>
-              <p className="text-gray-500 text-sm mb-1">
-                Seasons
-              </p>
-              <p>
-                {show.number_of_seasons || "N/A"}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-gray-500 text-sm mb-1">
-                Episodes
-              </p>
-              <p>
-                {show.number_of_episodes || "N/A"}
-              </p>
-            </div>
-
-          </div>
-
-          {show.networks?.length > 0 && (
-            <div className="mt-10">
-
-              <h3 className="text-xl font-bold mb-4">
-                Networks
-              </h3>
-
-              <div className="flex flex-wrap gap-3">
-                {show.networks.map((network) => (
+              {creators.map(
+                (person) => (
                   <span
-                    key={network.id}
+                    key={
+                      person.id ||
+                      person.credit_id
+                    }
                     className="
                       bg-zinc-900
                       border
@@ -793,22 +1064,176 @@ function Details() {
                       px-4
                       py-2
                       rounded-lg
-                      text-gray-400
+                      text-gray-300
                       text-sm
                     "
                   >
-                    {network.name}
+                    {person.name}
                   </span>
-                ))}
-              </div>
+                )
+              )}
 
             </div>
-          )}
+
+          </section>
+        )}
+
+        {/* ==========================================
+            INFORMATION
+        ========================================== */}
+
+        <section className="
+          mt-10
+          border-t
+          border-white/10
+          pt-8
+        ">
+
+          <h2 className="
+            text-xl
+            font-bold
+            mb-5
+          ">
+            Information
+          </h2>
+
+          <div className="
+            grid
+            grid-cols-1
+            sm:grid-cols-2
+            lg:grid-cols-3
+            gap-5
+          ">
+
+            {details.status && (
+              <div>
+                <p className="
+                  text-gray-500
+                  text-sm
+                  mb-1
+                ">
+                  Status
+                </p>
+
+                <p>
+                  {details.status}
+                </p>
+              </div>
+            )}
+
+            {details.original_language && (
+              <div>
+                <p className="
+                  text-gray-500
+                  text-sm
+                  mb-1
+                ">
+                  Original Language
+                </p>
+
+                <p className="uppercase">
+                  {details.original_language}
+                </p>
+              </div>
+            )}
+
+            {releaseDate && (
+              <div>
+                <p className="
+                  text-gray-500
+                  text-sm
+                  mb-1
+                ">
+                  {isMovie
+                    ? "Release Date"
+                    : "First Air Date"}
+                </p>
+
+                <p>
+                  {releaseDate}
+                </p>
+              </div>
+            )}
+
+            {isMovie &&
+              details.production_companies
+                ?.length > 0 && (
+                <div>
+                  <p className="
+                    text-gray-500
+                    text-sm
+                    mb-1
+                  ">
+                    Production
+                  </p>
+
+                  <p>
+                    {
+                      details
+                        .production_companies[0]
+                        ?.name
+                    }
+                  </p>
+                </div>
+              )}
+
+            {!isMovie &&
+              details.networks
+                ?.length > 0 && (
+                <div>
+                  <p className="
+                    text-gray-500
+                    text-sm
+                    mb-1
+                  ">
+                    Network
+                  </p>
+
+                  <p>
+                    {
+                      details.networks[0]
+                        ?.name
+                    }
+                  </p>
+                </div>
+              )}
+
+            {isMovie &&
+              details.budget > 0 && (
+                <div>
+                  <p className="
+                    text-gray-500
+                    text-sm
+                    mb-1
+                  ">
+                    Budget
+                  </p>
+
+                  <p>
+                    $
+                    {details.budget.toLocaleString()}
+                  </p>
+                </div>
+              )}
+
+          </div>
 
         </section>
 
+        {/* ==========================================
+            REVIEWS
+        ========================================== */}
+
+        <Reviews
+          id={id}
+          type={mediaType}
+        />
+
+        <div className="h-16" />
+
       </div>
-    </div>
+
+    </main>
   );
 }
 
