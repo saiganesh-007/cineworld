@@ -1,9 +1,15 @@
 import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from backend.models import db, User, Favorite, Watchlist
+
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
+from backend.auth import require_authenticated_user, resolve_authenticated_user
+from backend.models import db, Favorite, Watchlist
 
 
 app = Flask(__name__)
@@ -16,7 +22,12 @@ app = Flask(__name__)
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
-    DATABASE_URL = "sqlite:///cineworld.db"
+    DEFAULT_DB_PATH = (
+        Path(__file__).resolve().parent
+        / "instance"
+        / "cineworld.db"
+    )
+    DATABASE_URL = f"sqlite:///{DEFAULT_DB_PATH.as_posix()}"
 
 # PostgreSQL URLs sometimes start with postgres://
 # SQLAlchemy expects postgresql://
@@ -61,192 +72,129 @@ def test():
 
 
 # ==========================================
-# REGISTER
+# SUPABASE AUTH IDENTITY BRIDGE (read-only)
 # ==========================================
 
-@app.route("/api/register", methods=["POST"])
-def register():
-
-    data = request.get_json() or {}
-
-    username = data.get("username")
-    email = data.get("email")
-    password = data.get("password")
-
-    if not username or not email or not password:
-        return jsonify({
-            "success": False,
-            "message": "All fields are required"
-        }), 400
-
-    existing_user = User.query.filter(
-        (User.email == email) |
-        (User.username == username)
-    ).first()
-
-    if existing_user:
-        return jsonify({
-            "success": False,
-            "message": "Username or email already exists"
-        }), 409
-
-    user = User(
-        username=username,
-        email=email
-    )
-
-    user.set_password(password)
-
-    db.session.add(user)
-    db.session.commit()
-
-    return jsonify({
-        "success": True,
-        "message": "Account created successfully",
-        "user": {
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "profile_pic": user.profile_pic
-        }
-    }), 201
+@app.route("/api/auth/me", methods=["GET"])
+def auth_me():
+    payload, status = resolve_authenticated_user()
+    return jsonify(payload), status
 
 
 # ==========================================
-# LOGIN
+# AUTHENTICATED FAVORITES / WATCHLIST (Supabase)
+#
+# Identity always comes from the verified Supabase Bearer token.
+# A client-supplied user_id is never accepted or trusted here.
 # ==========================================
 
-@app.route("/api/login", methods=["POST"])
-def login():
-
-    data = request.get_json() or {}
-
-    email = data.get("email")
-    password = data.get("password")
-
-    if not email or not password:
-        return jsonify({
-            "success": False,
-            "message": "Email and password are required"
-        }), 400
-
-    user = User.query.filter_by(
-        email=email
-    ).first()
+def _require_user():
+    user, payload, status = require_authenticated_user()
 
     if not user:
-        return jsonify({
-            "success": False,
-            "message": "Invalid email or password"
-        }), 401
+        return None, payload, status
 
-    if not user.check_password(password):
-        return jsonify({
-            "success": False,
-            "message": "Invalid email or password"
-        }), 401
-
-    return jsonify({
-        "success": True,
-        "message": "Login successful",
-        "user": {
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "profile_pic": user.profile_pic
-        }
-    }), 200
+    return user, None, status
 
 
-# ==========================================
-# GET USER
-# ==========================================
-
-@app.route("/api/user/<int:user_id>", methods=["GET"])
-def get_user(user_id):
-
-    user = User.query.get(user_id)
-
-    if not user:
-        return jsonify({
-            "success": False,
-            "message": "User not found"
-        }), 404
-
-    return jsonify({
-        "success": True,
-        "user": {
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "profile_pic": user.profile_pic
-        }
-    })
+def _favorite_payload(item):
+    return {
+        "id": item.id,
+        "movie_id": item.movie_id,
+        "media_type": item.media_type,
+        "title": item.title,
+        "poster_path": item.poster_path
+    }
 
 
-# ==========================================
-# DELETE ACCOUNT
-# ==========================================
-
-@app.route("/api/user/<int:user_id>", methods=["DELETE"])
-def delete_account(user_id):
-
-    user = User.query.get(user_id)
-
-    if not user:
-        return jsonify({
-            "success": False,
-            "message": "User not found"
-        }), 404
-
-    Favorite.query.filter_by(
-        user_id=user_id
-    ).delete()
-
-    Watchlist.query.filter_by(
-        user_id=user_id
-    ).delete()
-
-    db.session.delete(user)
-    db.session.commit()
-
-    return jsonify({
-        "success": True,
-        "message": "Account deleted successfully"
-    })
+def _watchlist_payload(item):
+    return {
+        "id": item.id,
+        "movie_id": item.movie_id,
+        "media_type": item.media_type,
+        "title": item.title,
+        "poster_path": item.poster_path
+    }
 
 
-# ==========================================
-# ADD FAVORITE
-# ==========================================
-
-@app.route("/api/favorites", methods=["POST"])
-def add_favorite():
-
+def _parse_item_payload():
     data = request.get_json() or {}
 
-    user_id = data.get("user_id")
-    movie_id = data.get("movie_id")
-    media_type = data.get("media_type")
-    title = data.get("title")
+    tmdb_id = data.get("tmdb_id")
+    if tmdb_id is None:
+        tmdb_id = data.get("movie_id")
+
+    media_type = (data.get("media_type") or "").strip() or None
+    title = (data.get("title") or "").strip() or None
     poster_path = data.get("poster_path")
 
-    if not user_id or not movie_id or not media_type or not title:
-        return jsonify({
-            "success": False,
-            "message": "Missing required fields"
-        }), 400
+    if poster_path is not None:
+        poster_path = str(poster_path).strip() or None
 
-    user = User.query.get(user_id)
+    return tmdb_id, media_type, title, poster_path
+
+
+def _valid_tmdb_id(tmdb_id):
+    try:
+        value = int(tmdb_id)
+    except (TypeError, ValueError):
+        return None
+
+    if value <= 0:
+        return None
+
+    return value
+
+
+@app.route("/api/me/favorites", methods=["GET"])
+def get_my_favorites():
+    user, payload, status = _require_user()
 
     if not user:
+        return jsonify(payload), status
+
+    favorites = Favorite.query.filter_by(
+        user_id=user.id
+    ).order_by(
+        Favorite.created_at.desc()
+    ).all()
+
+    return jsonify({
+        "success": True,
+        "favorites": [
+            _favorite_payload(item)
+            for item in favorites
+        ]
+    })
+
+
+@app.route("/api/me/favorites", methods=["POST"])
+def add_my_favorite():
+    user, payload, status = _require_user()
+
+    if not user:
+        return jsonify(payload), status
+
+    tmdb_id, media_type, title, poster_path = _parse_item_payload()
+
+    movie_id = _valid_tmdb_id(tmdb_id)
+
+    if movie_id is None or not media_type or not title:
         return jsonify({
             "success": False,
-            "message": "User not found"
-        }), 404
+            "message": (
+                "tmdb_id, media_type and title are required"
+            )
+        }), 400
+
+    if len(media_type) > 20:
+        return jsonify({
+            "success": False,
+            "message": "media_type must be 20 characters or fewer"
+        }), 400
 
     existing = Favorite.query.filter_by(
-        user_id=user_id,
+        user_id=user.id,
         movie_id=movie_id,
         media_type=media_type
     ).first()
@@ -258,7 +206,7 @@ def add_favorite():
         }), 409
 
     favorite = Favorite(
-        user_id=user_id,
+        user_id=user.id,
         movie_id=movie_id,
         media_type=media_type,
         title=title,
@@ -271,52 +219,30 @@ def add_favorite():
     return jsonify({
         "success": True,
         "message": "Added to favorites",
-        "favorite": {
-            "id": favorite.id,
-            "movie_id": favorite.movie_id,
-            "media_type": favorite.media_type,
-            "title": favorite.title,
-            "poster_path": favorite.poster_path
-        }
+        "favorite": _favorite_payload(favorite)
     }), 201
 
 
-# ==========================================
-# GET FAVORITES
-# ==========================================
+@app.route("/api/me/favorites/<int:tmdb_id>", methods=["DELETE"])
+def remove_my_favorite(tmdb_id):
+    user, payload, status = _require_user()
 
-@app.route("/api/favorites/<int:user_id>", methods=["GET"])
-def get_favorites(user_id):
+    if not user:
+        return jsonify(payload), status
 
-    favorites = Favorite.query.filter_by(
-        user_id=user_id
-    ).order_by(
-        Favorite.created_at.desc()
-    ).all()
+    media_type = (request.args.get("media_type") or "").strip()
 
-    return jsonify({
-        "success": True,
-        "favorites": [
-            {
-                "id": item.id,
-                "movie_id": item.movie_id,
-                "media_type": item.media_type,
-                "title": item.title,
-                "poster_path": item.poster_path
-            }
-            for item in favorites
-        ]
-    })
+    if not media_type:
+        return jsonify({
+            "success": False,
+            "message": "media_type query parameter is required"
+        }), 400
 
-
-# ==========================================
-# REMOVE FAVORITE
-# ==========================================
-
-@app.route("/api/favorites/<int:favorite_id>", methods=["DELETE"])
-def remove_favorite(favorite_id):
-
-    favorite = Favorite.query.get(favorite_id)
+    favorite = Favorite.query.filter_by(
+        user_id=user.id,
+        movie_id=tmdb_id,
+        media_type=media_type
+    ).first()
 
     if not favorite:
         return jsonify({
@@ -333,37 +259,55 @@ def remove_favorite(favorite_id):
     })
 
 
-# ==========================================
-# ADD WATCHLIST
-# ==========================================
-
-@app.route("/api/watchlist", methods=["POST"])
-def add_watchlist():
-
-    data = request.get_json() or {}
-
-    user_id = data.get("user_id")
-    movie_id = data.get("movie_id")
-    media_type = data.get("media_type")
-    title = data.get("title")
-    poster_path = data.get("poster_path")
-
-    if not user_id or not movie_id or not media_type or not title:
-        return jsonify({
-            "success": False,
-            "message": "Missing required fields"
-        }), 400
-
-    user = User.query.get(user_id)
+@app.route("/api/me/watchlist", methods=["GET"])
+def get_my_watchlist():
+    user, payload, status = _require_user()
 
     if not user:
+        return jsonify(payload), status
+
+    items = Watchlist.query.filter_by(
+        user_id=user.id
+    ).order_by(
+        Watchlist.created_at.desc()
+    ).all()
+
+    return jsonify({
+        "success": True,
+        "watchlist": [
+            _watchlist_payload(item)
+            for item in items
+        ]
+    })
+
+
+@app.route("/api/me/watchlist", methods=["POST"])
+def add_my_watchlist():
+    user, payload, status = _require_user()
+
+    if not user:
+        return jsonify(payload), status
+
+    tmdb_id, media_type, title, poster_path = _parse_item_payload()
+
+    movie_id = _valid_tmdb_id(tmdb_id)
+
+    if movie_id is None or not media_type or not title:
         return jsonify({
             "success": False,
-            "message": "User not found"
-        }), 404
+            "message": (
+                "tmdb_id, media_type and title are required"
+            )
+        }), 400
+
+    if len(media_type) > 20:
+        return jsonify({
+            "success": False,
+            "message": "media_type must be 20 characters or fewer"
+        }), 400
 
     existing = Watchlist.query.filter_by(
-        user_id=user_id,
+        user_id=user.id,
         movie_id=movie_id,
         media_type=media_type
     ).first()
@@ -375,7 +319,7 @@ def add_watchlist():
         }), 409
 
     item = Watchlist(
-        user_id=user_id,
+        user_id=user.id,
         movie_id=movie_id,
         media_type=media_type,
         title=title,
@@ -388,52 +332,30 @@ def add_watchlist():
     return jsonify({
         "success": True,
         "message": "Added to watchlist",
-        "watchlist": {
-            "id": item.id,
-            "movie_id": item.movie_id,
-            "media_type": item.media_type,
-            "title": item.title,
-            "poster_path": item.poster_path
-        }
+        "watchlist": _watchlist_payload(item)
     }), 201
 
 
-# ==========================================
-# GET WATCHLIST
-# ==========================================
+@app.route("/api/me/watchlist/<int:tmdb_id>", methods=["DELETE"])
+def remove_my_watchlist(tmdb_id):
+    user, payload, status = _require_user()
 
-@app.route("/api/watchlist/<int:user_id>", methods=["GET"])
-def get_watchlist(user_id):
+    if not user:
+        return jsonify(payload), status
 
-    items = Watchlist.query.filter_by(
-        user_id=user_id
-    ).order_by(
-        Watchlist.created_at.desc()
-    ).all()
+    media_type = (request.args.get("media_type") or "").strip()
 
-    return jsonify({
-        "success": True,
-        "watchlist": [
-            {
-                "id": item.id,
-                "movie_id": item.movie_id,
-                "media_type": item.media_type,
-                "title": item.title,
-                "poster_path": item.poster_path
-            }
-            for item in items
-        ]
-    })
+    if not media_type:
+        return jsonify({
+            "success": False,
+            "message": "media_type query parameter is required"
+        }), 400
 
-
-# ==========================================
-# REMOVE WATCHLIST
-# ==========================================
-
-@app.route("/api/watchlist/<int:item_id>", methods=["DELETE"])
-def remove_watchlist(item_id):
-
-    item = Watchlist.query.get(item_id)
+    item = Watchlist.query.filter_by(
+        user_id=user.id,
+        movie_id=tmdb_id,
+        media_type=media_type
+    ).first()
 
     if not item:
         return jsonify({

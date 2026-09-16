@@ -2,5 +2,6 @@ Flask
 Flask-Cors
 Flask-SQLAlchemy
 Werkzeug
+python-dotenv
 gunicorn
 psycopg2-binary

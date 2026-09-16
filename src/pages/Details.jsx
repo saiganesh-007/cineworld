@@ -13,7 +13,7 @@ import {
 
 import Reviews from "../components/Reviews";
 
-const API_URL = "http://127.0.0.1:5001/api";
+import { useSavedItems } from "../context/SavedItemsContext";
 
 function Details() {
   const { id } = useParams();
@@ -37,21 +37,25 @@ function Details() {
 
   const [error, setError] = useState(false);
 
-  const [isFavorite, setIsFavorite] = useState(false);
-
-  const [isWatchlisted, setIsWatchlisted] = useState(false);
-
-  const [favoriteId, setFavoriteId] = useState(null);
-
-  const [watchlistId, setWatchlistId] = useState(null);
-
   const [actionLoading, setActionLoading] = useState(false);
 
   const [message, setMessage] = useState("");
 
-  const user = JSON.parse(
-    localStorage.getItem("cineworld_user")
-  );
+  const {
+    status,
+    isFavorite,
+    isWatchlisted,
+    addFavorite,
+    removeFavorite,
+    addWatchlist,
+    removeWatchlist,
+  } = useSavedItems();
+
+  const ready = status === "ready";
+
+  const favorited = ready && isFavorite(id, mediaType);
+
+  const watchlisted = ready && isWatchlisted(id, mediaType);
 
   // ==========================================
   // FETCH DETAILS
@@ -126,148 +130,17 @@ function Details() {
   }, [id, isMovie]);
 
   // ==========================================
-  // CHECK FAVORITES + WATCHLIST
-  // ==========================================
-
-  useEffect(() => {
-    if (!user) return;
-
-    async function checkSavedItems() {
-      try {
-        const [
-          favoritesResponse,
-          watchlistResponse,
-        ] = await Promise.all([
-          fetch(
-            `${API_URL}/favorites/${user.id}`
-          ),
-          fetch(
-            `${API_URL}/watchlist/${user.id}`
-          ),
-        ]);
-
-        if (!favoritesResponse.ok) {
-          throw new Error(
-            "Failed to load favorites"
-          );
-        }
-
-        if (!watchlistResponse.ok) {
-          throw new Error(
-            "Failed to load watchlist"
-          );
-        }
-
-        const favoritesData =
-          await favoritesResponse.json();
-
-        const watchlistData =
-          await watchlistResponse.json();
-
-        // ==========================================
-        // FIND FAVORITE
-        // ==========================================
-
-        const favoriteItem =
-          (favoritesData.favorites || []).find(
-            (item) =>
-              String(item.movie_id) ===
-                String(id) &&
-              item.media_type === mediaType
-          );
-
-        // ==========================================
-        // FIND WATCHLIST
-        // ==========================================
-
-        const watchlistItem =
-          (watchlistData.watchlist || []).find(
-            (item) =>
-              String(item.movie_id) ===
-                String(id) &&
-              item.media_type === mediaType
-          );
-
-        if (favoriteItem) {
-          setIsFavorite(true);
-
-          setFavoriteId(
-            favoriteItem.id
-          );
-        } else {
-          setIsFavorite(false);
-          setFavoriteId(null);
-        }
-
-        if (watchlistItem) {
-          setIsWatchlisted(true);
-
-          setWatchlistId(
-            watchlistItem.id
-          );
-        } else {
-          setIsWatchlisted(false);
-          setWatchlistId(null);
-        }
-
-      } catch (error) {
-        console.error(
-          "Saved items error:",
-          error
-        );
-      }
-    }
-
-    checkSavedItems();
-  }, [id, mediaType, user]);
-
   // ==========================================
   // FAVORITE
   // ==========================================
 
   async function handleFavorite() {
-    if (!user) {
-      setMessage(
-        "Please login first."
-      );
-
-      return;
-    }
-
     try {
       setActionLoading(true);
       setMessage("");
 
-      // ==========================================
-      // REMOVE FAVORITE
-      // ==========================================
-
-      if (isFavorite) {
-        if (!favoriteId) {
-          throw new Error(
-            "Favorite ID not found"
-          );
-        }
-
-        const response = await fetch(
-          `${API_URL}/favorites/${favoriteId}`,
-          {
-            method: "DELETE",
-          }
-        );
-
-        const data =
-          await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.message ||
-              "Failed to remove favorite"
-          );
-        }
-
-        setIsFavorite(false);
-        setFavoriteId(null);
+      if (favorited) {
+        await removeFavorite(id, mediaType);
 
         setMessage(
           "Removed from Favorites ❤️"
@@ -276,70 +149,41 @@ function Details() {
         return;
       }
 
-      // ==========================================
-      // ADD FAVORITE
-      // ==========================================
-
       const title = isMovie
         ? details.title
         : details.name;
 
-      const response = await fetch(
-        `${API_URL}/favorites`,
-        {
-          method: "POST",
+      try {
+        const result = await addFavorite({
+          tmdb_id: Number(id),
+          media_type: mediaType,
+          title: title,
+          poster_path: details.poster_path,
+        });
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body: JSON.stringify({
-            user_id: user.id,
-
-            movie_id: Number(id),
-
-            media_type: mediaType,
-
-            title: title,
-
-            poster_path:
-              details.poster_path,
-          }),
-        }
-      );
-
-      const data =
-        await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message ||
-            "Failed to add favorite"
+        setMessage(
+          result.alreadySaved
+            ? "Already in Favorites ❤️"
+            : "Added to Favorites ❤️"
         );
+      } catch (error) {
+        throw error;
       }
-
-      setIsFavorite(true);
-
-      if (data.id) {
-        setFavoriteId(data.id);
-      }
-
-      setMessage(
-        "Added to Favorites ❤️"
-      );
 
     } catch (error) {
-      console.error(
-        "Favorite error:",
-        error
-      );
+      if (error.status === 401) {
+        setMessage("Please login first.");
+      } else {
+        console.error(
+          "Favorite error:",
+          error
+        );
 
-      setMessage(
-        error.message ||
-          "Unable to update Favorites."
-      );
-
+        setMessage(
+          error.message ||
+            "Unable to update Favorites."
+        );
+      }
     } finally {
       setActionLoading(false);
     }
@@ -350,48 +194,12 @@ function Details() {
   // ==========================================
 
   async function handleWatchlist() {
-    if (!user) {
-      setMessage(
-        "Please login first."
-      );
-
-      return;
-    }
-
     try {
       setActionLoading(true);
       setMessage("");
 
-      // ==========================================
-      // REMOVE WATCHLIST
-      // ==========================================
-
-      if (isWatchlisted) {
-        if (!watchlistId) {
-          throw new Error(
-            "Watchlist ID not found"
-          );
-        }
-
-        const response = await fetch(
-          `${API_URL}/watchlist/${watchlistId}`,
-          {
-            method: "DELETE",
-          }
-        );
-
-        const data =
-          await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.message ||
-              "Failed to remove watchlist"
-          );
-        }
-
-        setIsWatchlisted(false);
-        setWatchlistId(null);
+      if (watchlisted) {
+        await removeWatchlist(id, mediaType);
 
         setMessage(
           "Removed from Watchlist 🔖"
@@ -400,70 +208,41 @@ function Details() {
         return;
       }
 
-      // ==========================================
-      // ADD WATCHLIST
-      // ==========================================
-
       const title = isMovie
         ? details.title
         : details.name;
 
-      const response = await fetch(
-        `${API_URL}/watchlist`,
-        {
-          method: "POST",
+      try {
+        const result = await addWatchlist({
+          tmdb_id: Number(id),
+          media_type: mediaType,
+          title: title,
+          poster_path: details.poster_path,
+        });
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body: JSON.stringify({
-            user_id: user.id,
-
-            movie_id: Number(id),
-
-            media_type: mediaType,
-
-            title: title,
-
-            poster_path:
-              details.poster_path,
-          }),
-        }
-      );
-
-      const data =
-        await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message ||
-            "Failed to add watchlist"
+        setMessage(
+          result.alreadySaved
+            ? "Already in Watchlist 🔖"
+            : "Added to Watchlist 🔖"
         );
+      } catch (error) {
+        throw error;
       }
-
-      setIsWatchlisted(true);
-
-      if (data.id) {
-        setWatchlistId(data.id);
-      }
-
-      setMessage(
-        "Added to Watchlist 🔖"
-      );
 
     } catch (error) {
-      console.error(
-        "Watchlist error:",
-        error
-      );
+      if (error.status === 401) {
+        setMessage("Please login first.");
+      } else {
+        console.error(
+          "Watchlist error:",
+          error
+        );
 
-      setMessage(
-        error.message ||
-          "Unable to update Watchlist."
-      );
-
+        setMessage(
+          error.message ||
+            "Unable to update Watchlist."
+        );
+      }
     } finally {
       setActionLoading(false);
     }
@@ -822,7 +601,7 @@ function Details() {
 
               <button
                 onClick={handleFavorite}
-                disabled={actionLoading}
+                disabled={actionLoading || !ready}
                 className={`
                   px-5
                   py-2.5
@@ -831,21 +610,21 @@ function Details() {
                   text-sm
                   transition
                   ${
-                    isFavorite
+                    favorited
                       ? "bg-zinc-700 hover:bg-zinc-600"
                       : "bg-red-600 hover:bg-red-700"
                   }
                   disabled:opacity-50
                 `}
               >
-                {isFavorite
+                {favorited
                   ? "❤️ Remove Favorite"
                   : "❤️ Add to Favorites"}
               </button>
 
               <button
                 onClick={handleWatchlist}
-                disabled={actionLoading}
+                disabled={actionLoading || !ready}
                 className={`
                   px-5
                   py-2.5
@@ -854,14 +633,14 @@ function Details() {
                   text-sm
                   transition
                   ${
-                    isWatchlisted
+                    watchlisted
                       ? "bg-zinc-700 hover:bg-zinc-600"
                       : "bg-white/10 hover:bg-white/20"
                   }
                   disabled:opacity-50
                 `}
               >
-                {isWatchlisted
+                {watchlisted
                   ? "🔖 Remove Watchlist"
                   : "🔖 Add to Watchlist"}
               </button>

@@ -1,90 +1,53 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
-const API_URL = "http://127.0.0.1:5001/api";
+import { useSavedItems } from "../context/SavedItemsContext";
 
 function Watchlist() {
-  const [watchlist, setWatchlist] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    status,
+    isAuthenticated,
+    watchlist,
+    savedError,
+    removeWatchlist,
+    refreshSavedItems,
+  } = useSavedItems();
+
+  const [loggedOut, setLoggedOut] = useState(false);
   const [error, setError] = useState("");
 
-  const user = (() => {
-    try {
-      const savedUser = localStorage.getItem("cineworld_user");
-      return savedUser ? JSON.parse(savedUser) : null;
-    } catch {
-      return null;
-    }
-  })();
+  const loading = status === "loading";
 
-  // ==========================================
-  // LOAD WATCHLIST
-  // ==========================================
-
-  useEffect(() => {
-    loadWatchlist();
-  }, []);
-
-  async function loadWatchlist() {
-    if (!user) {
-      setWatchlist([]);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError("");
-
-      const response = await fetch(
-        `${API_URL}/watchlist/${user.id}`
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message || "Failed to load watchlist"
-        );
-      }
-
-      setWatchlist(data.watchlist || []);
-    } catch (error) {
-      console.error("Watchlist error:", error);
-      setError("Unable to load watchlist.");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const displayError = error || savedError;
 
   // ==========================================
   // REMOVE WATCHLIST
   // ==========================================
 
-  async function handleRemove(itemId) {
+  async function handleRemove(item) {
     try {
-      const response = await fetch(
-        `${API_URL}/watchlist/${itemId}`,
-        {
-          method: "DELETE",
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message || "Failed to remove watchlist item"
-        );
-      }
-
-      // Remove immediately from screen
-      setWatchlist((current) =>
-        current.filter((item) => item.id !== itemId)
-      );
+      await removeWatchlist(item.movie_id, item.media_type);
+      setError("");
     } catch (error) {
-      console.error("Remove watchlist error:", error);
-      setError("Unable to remove watchlist item.");
+      if (error.status === 401) {
+        setLoggedOut(true);
+      } else {
+        console.error("Remove watchlist error:", error);
+        setError("Unable to remove watchlist item.");
+      }
+    }
+  }
+
+  // ==========================================
+  // RETRY
+  // ==========================================
+
+  async function handleRetry() {
+    setError("");
+    try {
+      await refreshSavedItems();
+    } catch (err) {
+      setError("Unable to load watchlist.");
     }
   }
 
@@ -92,7 +55,7 @@ function Watchlist() {
   // NOT LOGGED IN
   // ==========================================
 
-  if (!user) {
+  if (loggedOut || (status === "ready" && !isAuthenticated)) {
     return (
       <div className="min-h-screen bg-black text-white px-6 py-10">
         <div className="max-w-7xl mx-auto text-center py-20">
@@ -142,15 +105,15 @@ function Watchlist() {
 
         {/* ERROR */}
 
-        {!loading && error && (
+        {!loading && displayError && (
           <div className="text-center py-20">
 
             <p className="text-red-400 text-lg">
-              {error}
+              {displayError}
             </p>
 
             <button
-              onClick={loadWatchlist}
+              onClick={handleRetry}
               className="mt-4 bg-red-600 hover:bg-red-700 px-5 py-2 rounded-lg"
             >
               Try Again
@@ -162,7 +125,7 @@ function Watchlist() {
         {/* EMPTY */}
 
         {!loading &&
-          !error &&
+          !displayError &&
           watchlist.length === 0 && (
             <div className="text-center py-20">
 
@@ -180,7 +143,7 @@ function Watchlist() {
         {/* WATCHLIST */}
 
         {!loading &&
-          !error &&
+          !displayError &&
           watchlist.length > 0 && (
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
@@ -198,7 +161,7 @@ function Watchlist() {
 
                 return (
                   <div
-                    key={item.id}
+                    key={`${item.media_type}-${item.movie_id}`}
                     className="group"
                   >
 
@@ -248,7 +211,7 @@ function Watchlist() {
                     {/* REMOVE */}
 
                     <button
-                      onClick={() => handleRemove(item.id)}
+                      onClick={() => handleRemove(item)}
                       className="w-full mt-3 bg-red-600/20 border border-red-500/30 hover:bg-red-600 text-red-400 hover:text-white py-2 rounded-lg font-semibold transition"
                     >
                       Remove 🔖

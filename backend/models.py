@@ -1,5 +1,4 @@
 from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
 
@@ -29,22 +28,24 @@ class User(db.Model):
 
     password = db.Column(
         db.String(255),
-        nullable=False
+        nullable=True
+    )
+
+    # Additive Supabase identity mapping.
+    # The internal integer User.id is preserved for existing
+    # favorites/watchlist rows. Supabase UUIDs are the external
+    # authenticated identity and are only linked once verified.
+    supabase_user_id = db.Column(
+        db.String(64),
+        unique=True,
+        nullable=True,
+        index=True
     )
 
     profile_pic = db.Column(
         db.Text,
         nullable=True
     )
-
-    def set_password(self, password):
-        self.password = generate_password_hash(password)
-
-    def check_password(self, password):
-        return check_password_hash(
-            self.password,
-            password
-        )
 
 
 # ==========================================

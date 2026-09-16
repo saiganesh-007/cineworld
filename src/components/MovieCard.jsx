@@ -1,7 +1,67 @@
 import { Link } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-const API_URL = "http://127.0.0.1:5001/api";
+import { useSavedItems } from "../context/SavedItemsContext";
+
+// ==========================================
+// ICONS
+// ==========================================
+
+function PlayIcon({ className = "" }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+    >
+      <path d="m8 5 11 7-11 7V5z" />
+    </svg>
+  );
+}
+
+function StarIcon({ className = "" }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+    >
+      <path d="M12 2l2.9 6.26 6.6.72-4.9 4.57 1.3 6.6L12 16.9 6.1 20.15l1.3-6.6L2.5 8.98l6.6-.72L12 2z" />
+    </svg>
+  );
+}
+
+function HeartIcon({ filled = false, className = "" }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+    </svg>
+  );
+}
+
+function BookmarkIcon({ filled = false, className = "" }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
+    </svg>
+  );
+}
 
 function MovieCard({
   id,
@@ -16,99 +76,23 @@ function MovieCard({
       ? `/tv/${id}`
       : `/movie/${id}`;
 
-  const [isFavorite, setIsFavorite] = useState(false);
-  const [isWatchlisted, setIsWatchlisted] = useState(false);
+  const {
+    status,
+    isFavorite,
+    isWatchlisted,
+    addFavorite,
+    removeFavorite,
+    addWatchlist,
+    removeWatchlist,
+  } = useSavedItems();
+
+  const ready = status === "ready";
+
+  const favorited = ready && isFavorite(id, type);
+  const watchlisted = ready && isWatchlisted(id, type);
 
   const [loadingFavorite, setLoadingFavorite] = useState(false);
   const [loadingWatchlist, setLoadingWatchlist] = useState(false);
-
-  // ==========================================
-  // GET LOGGED-IN USER
-  // ==========================================
-
-  function getUser() {
-    try {
-      const savedUser = localStorage.getItem("cineworld_user");
-
-      if (!savedUser) {
-        return null;
-      }
-
-      return JSON.parse(savedUser);
-    } catch (error) {
-      console.error("User data error:", error);
-      return null;
-    }
-  }
-
-  // ==========================================
-  // CHECK FAVORITE + WATCHLIST
-  // ==========================================
-
-  useEffect(() => {
-    const user = getUser();
-
-    if (!user) {
-      setIsFavorite(false);
-      setIsWatchlisted(false);
-      return;
-    }
-
-    async function checkSavedItems() {
-      try {
-        // ------------------------------
-        // CHECK FAVORITES
-        // ------------------------------
-
-        const favoriteResponse = await fetch(
-          `${API_URL}/favorites/${user.id}`
-        );
-
-        if (favoriteResponse.ok) {
-          const favoriteData =
-            await favoriteResponse.json();
-
-          const exists =
-            favoriteData.favorites?.some(
-              (item) =>
-                Number(item.movie_id) === Number(id) &&
-                item.media_type === type
-            );
-
-          setIsFavorite(!!exists);
-        }
-
-        // ------------------------------
-        // CHECK WATCHLIST
-        // ------------------------------
-
-        const watchlistResponse = await fetch(
-          `${API_URL}/watchlist/${user.id}`
-        );
-
-        if (watchlistResponse.ok) {
-          const watchlistData =
-            await watchlistResponse.json();
-
-          const exists =
-            watchlistData.watchlist?.some(
-              (item) =>
-                Number(item.movie_id) === Number(id) &&
-                item.media_type === type
-            );
-
-          setIsWatchlisted(!!exists);
-        }
-      } catch (error) {
-        console.error(
-          "Error checking saved items:",
-          error
-        );
-      }
-    }
-
-    checkSavedItems();
-  }, [id, type]);
 
   // ==========================================
   // GET POSTER PATH
@@ -134,115 +118,30 @@ function MovieCard({
     event.preventDefault();
     event.stopPropagation();
 
-    const user = getUser();
-
-    if (!user) {
-      alert("Please login first.");
-      return;
-    }
-
     try {
       setLoadingFavorite(true);
 
-      // =====================================
-      // REMOVE FAVORITE
-      // =====================================
-
-      if (isFavorite) {
-        const response = await fetch(
-          `${API_URL}/favorites/${user.id}`
-        );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.message || "Failed to get favorites"
-          );
-        }
-
-        const existing =
-          data.favorites?.find(
-            (item) =>
-              Number(item.movie_id) === Number(id) &&
-              item.media_type === type
-          );
-
-        if (!existing) {
-          setIsFavorite(false);
-          return;
-        }
-
-        const deleteResponse = await fetch(
-          `${API_URL}/favorites/${existing.id}`,
-          {
-            method: "DELETE",
-          }
-        );
-
-        const deleteData =
-          await deleteResponse.json();
-
-        if (!deleteResponse.ok) {
-          throw new Error(
-            deleteData.message ||
-              "Failed to remove favorite"
-          );
-        }
-
-        setIsFavorite(false);
-
-        console.log(
-          "Removed from favorites:",
-          title
-        );
-      }
-
-      // =====================================
-      // ADD FAVORITE
-      // =====================================
-
-      else {
-        const response = await fetch(
-          `${API_URL}/favorites`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              user_id: user.id,
-              movie_id: Number(id),
-              media_type: type,
-              title: title,
-              poster_path: getPosterPath(),
-            }),
-          }
-        );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.message ||
-              "Failed to add favorite"
-          );
-        }
-
-        setIsFavorite(true);
-
-        console.log(
-          "Added to favorites:",
-          data.favorite
-        );
+      if (favorited) {
+        await removeFavorite(id, type);
+      } else {
+        await addFavorite({
+          tmdb_id: Number(id),
+          media_type: type,
+          title,
+          poster_path: getPosterPath(),
+        });
       }
     } catch (error) {
-      console.error(
-        "Favorite error:",
-        error
-      );
+      if (error.status === 401) {
+        alert("Please login first.");
+      } else {
+        console.error(
+          "Favorite error:",
+          error
+        );
 
-      alert(error.message);
+        alert(error.message);
+      }
     } finally {
       setLoadingFavorite(false);
     }
@@ -256,120 +155,36 @@ function MovieCard({
     event.preventDefault();
     event.stopPropagation();
 
-    const user = getUser();
-
-    if (!user) {
-      alert("Please login first.");
-      return;
-    }
-
     try {
       setLoadingWatchlist(true);
 
-      // =====================================
-      // REMOVE WATCHLIST
-      // =====================================
-
-      if (isWatchlisted) {
-        const response = await fetch(
-          `${API_URL}/watchlist/${user.id}`
-        );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.message ||
-              "Failed to get watchlist"
-          );
-        }
-
-        const existing =
-          data.watchlist?.find(
-            (item) =>
-              Number(item.movie_id) === Number(id) &&
-              item.media_type === type
-          );
-
-        if (!existing) {
-          setIsWatchlisted(false);
-          return;
-        }
-
-        const deleteResponse = await fetch(
-          `${API_URL}/watchlist/${existing.id}`,
-          {
-            method: "DELETE",
-          }
-        );
-
-        const deleteData =
-          await deleteResponse.json();
-
-        if (!deleteResponse.ok) {
-          throw new Error(
-            deleteData.message ||
-              "Failed to remove watchlist item"
-          );
-        }
-
-        setIsWatchlisted(false);
-
-        console.log(
-          "Removed from watchlist:",
-          title
-        );
-      }
-
-      // =====================================
-      // ADD WATCHLIST
-      // =====================================
-
-      else {
-        const response = await fetch(
-          `${API_URL}/watchlist`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              user_id: user.id,
-              movie_id: Number(id),
-              media_type: type,
-              title: title,
-              poster_path: getPosterPath(),
-            }),
-          }
-        );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.message ||
-              "Failed to add watchlist"
-          );
-        }
-
-        setIsWatchlisted(true);
-
-        console.log(
-          "Added to watchlist:",
-          data.watchlist
-        );
+      if (watchlisted) {
+        await removeWatchlist(id, type);
+      } else {
+        await addWatchlist({
+          tmdb_id: Number(id),
+          media_type: type,
+          title,
+          poster_path: getPosterPath(),
+        });
       }
     } catch (error) {
-      console.error(
-        "Watchlist error:",
-        error
-      );
+      if (error.status === 401) {
+        alert("Please login first.");
+      } else {
+        console.error(
+          "Watchlist error:",
+          error
+        );
 
-      alert(error.message);
+        alert(error.message);
+      }
     } finally {
       setLoadingWatchlist(false);
     }
   }
+
+  const isDisabled = !ready;
 
   // ==========================================
   // UI
@@ -384,7 +199,14 @@ function MovieCard({
 
       <Link
         to={detailsPath}
-        className="block group"
+        className="
+          block
+          group
+          rounded-lg
+          focus-visible:outline-2
+          focus-visible:outline-offset-2
+          focus-visible:outline-red-500
+        "
       >
         <div
           className="
@@ -398,9 +220,13 @@ function MovieCard({
             border
             border-white/10
             shadow-lg
+            shadow-black/40
             transition-all
             duration-300
+            ease-out
             group-hover:-translate-y-1
+            group-hover:border-red-500/20
+            group-hover:shadow-[0_10px_30px_rgba(0,0,0,0.65),0_0_22px_rgba(239,68,68,0.14)]
           "
         >
           {image ? (
@@ -413,8 +239,9 @@ function MovieCard({
                 h-full
                 object-cover
                 transition-transform
-                duration-500
-                group-hover:scale-105
+                duration-300
+                ease-out
+                group-hover:scale-[1.03]
               "
             />
           ) : (
@@ -433,7 +260,7 @@ function MovieCard({
             </div>
           )}
 
-          {/* GRADIENT */}
+          {/* HOVER OVERLAY GRADIENT */}
 
           <div
             className="
@@ -441,32 +268,19 @@ function MovieCard({
               inset-0
               bg-gradient-to-t
               from-black/70
-              via-transparent
+              via-black/10
               to-transparent
+              opacity-0
+              group-hover:opacity-100
+              group-focus-visible:opacity-100
+              transition-opacity
+              duration-300
               pointer-events-none
             "
+            aria-hidden="true"
           />
 
-          {/* RATING */}
-
-          <div
-            className="
-              absolute
-              top-2
-              right-2
-              bg-black/80
-              px-2
-              py-1
-              rounded-md
-              text-yellow-400
-              text-[11px]
-              font-semibold
-            "
-          >
-            ⭐ {rating || "N/A"}
-          </div>
-
-          {/* PLAY */}
+          {/* PLAY / DETAILS (center, hover/focus) */}
 
           <div
             className="
@@ -475,66 +289,95 @@ function MovieCard({
               flex
               items-center
               justify-center
-              bg-black/20
               opacity-0
               group-hover:opacity-100
+              group-focus-visible:opacity-100
               transition-opacity
               duration-300
               pointer-events-none
             "
+            aria-hidden="true"
           >
             <span
               className="
-                w-9
-                h-9
-                rounded-full
-                bg-white
-                text-black
                 flex
                 items-center
                 justify-center
-                text-sm
+                w-9
+                h-9
+                rounded-full
+                bg-black/60
+                backdrop-blur-sm
+                border
+                border-white/15
+                text-white
                 shadow-xl
+                shadow-black/50
+                transition-colors
+                duration-300
+                group-hover:bg-red-600/90
               "
             >
-              ▶
+              <PlayIcon className="w-3.5 h-3.5 ml-0.5" />
             </span>
           </div>
+
+          {/* RATING BADGE */}
+
+          <div
+            className="
+              absolute
+              top-2
+              right-2
+              flex
+              items-center
+              gap-1
+              bg-black/50
+              backdrop-blur-sm
+              border
+              border-white/10
+              px-1.5
+              py-0.5
+              rounded-full
+              text-yellow-300/90
+              text-[10px]
+              font-semibold
+            "
+          >
+            <StarIcon className="w-3 h-3" />
+
+            <span>{rating || "N/A"}</span>
+          </div>
         </div>
-      </Link>
 
-      {/* ================================= */}
-      {/* MOVIE INFO */}
-      {/* ================================= */}
+        {/* ================================= */}
+        {/* MOVIE INFO */}
+        {/* ================================= */}
 
-      <div className="mt-2 px-0.5">
+        <div className="mt-2 px-0.5">
 
-        <h3
-          className="
-            text-white
-            text-sm
-            font-medium
-            truncate
-          "
-          title={title}
-        >
-          {title || "Untitled"}
-        </h3>
+          <h3
+            className="
+              text-white
+              text-sm
+              font-semibold
+              leading-snug
+              truncate
+            "
+            title={title}
+          >
+            {title || "Untitled"}
+          </h3>
 
-        <div className="flex items-center justify-between mt-1">
+          <p className="text-gray-500 text-[11px] mt-0.5 truncate">
+            {type === "tv" ? "TV" : "Movie"}
 
-          <p className="text-gray-500 text-xs">
+            {" • "}
+
             {year || "N/A"}
           </p>
-
-          <span className="text-gray-600 text-[10px]">
-            {type === "tv"
-              ? "Series"
-              : "Movie"}
-          </span>
-
         </div>
-      </div>
+      </Link>
 
       {/* ================================= */}
       {/* FAVORITE + WATCHLIST */}
@@ -547,9 +390,14 @@ function MovieCard({
         <button
           type="button"
           onClick={handleFavorite}
-          disabled={loadingFavorite}
+          disabled={isDisabled || loadingFavorite}
           title={
-            isFavorite
+            favorited
+              ? "Remove from Favorites"
+              : "Add to Favorites"
+          }
+          aria-label={
+            favorited
               ? "Remove from Favorites"
               : "Add to Favorites"
           }
@@ -557,26 +405,46 @@ function MovieCard({
             flex-1
             h-8
             rounded-md
-            text-xs
+            flex
+            items-center
+            justify-center
             border
-            transition
+            transition-all
+            duration-200
+            focus-visible:outline-2
+            focus-visible:outline-offset-2
+            focus-visible:outline-red-500
             ${
-              isFavorite
-                ? "bg-red-600/20 border-red-500/40 text-red-400"
-                : "bg-zinc-950 border-white/10 text-gray-400 hover:text-red-400 hover:border-red-500/30"
+              favorited
+                ? "bg-red-600/15 border-red-500/40 text-red-500 hover:bg-red-600/25"
+                : "bg-zinc-900/60 border-white/10 text-gray-400 hover:text-red-400 hover:border-red-500/30 hover:bg-zinc-800"
             }
             ${
-              loadingFavorite
+              isDisabled || loadingFavorite
                 ? "opacity-50 cursor-not-allowed"
-                : ""
+                : "cursor-pointer"
             }
           `}
         >
-          {loadingFavorite
-            ? "..."
-            : isFavorite
-            ? "♥"
-            : "♡"}
+          {loadingFavorite ? (
+            <span
+              className="
+                w-3.5
+                h-3.5
+                border-2
+                border-white/20
+                border-t-transparent
+                rounded-full
+                animate-spin
+              "
+              style={{ opacity: 0.6 }}
+            />
+          ) : (
+            <HeartIcon
+              filled={favorited}
+              className="w-3.5 h-3.5"
+            />
+          )}
         </button>
 
         {/* 🔖 WATCHLIST */}
@@ -584,9 +452,14 @@ function MovieCard({
         <button
           type="button"
           onClick={handleWatchlist}
-          disabled={loadingWatchlist}
+          disabled={isDisabled || loadingWatchlist}
           title={
-            isWatchlisted
+            watchlisted
+              ? "Remove from Watchlist"
+              : "Add to Watchlist"
+          }
+          aria-label={
+            watchlisted
               ? "Remove from Watchlist"
               : "Add to Watchlist"
           }
@@ -594,26 +467,46 @@ function MovieCard({
             flex-1
             h-8
             rounded-md
-            text-xs
+            flex
+            items-center
+            justify-center
             border
-            transition
+            transition-all
+            duration-200
+            focus-visible:outline-2
+            focus-visible:outline-offset-2
+            focus-visible:outline-red-500
             ${
-              isWatchlisted
-                ? "bg-white/10 border-white/20 text-white"
-                : "bg-zinc-950 border-white/10 text-gray-400 hover:text-white hover:border-white/20"
+              watchlisted
+                ? "bg-red-600/15 border-red-500/40 text-red-500 hover:bg-red-600/25"
+                : "bg-zinc-900/60 border-white/10 text-gray-400 hover:text-white hover:border-white/20 hover:bg-zinc-800"
             }
             ${
-              loadingWatchlist
+              isDisabled || loadingWatchlist
                 ? "opacity-50 cursor-not-allowed"
-                : ""
+                : "cursor-pointer"
             }
           `}
         >
-          {loadingWatchlist
-            ? "..."
-            : isWatchlisted
-            ? "✓"
-            : "+"}
+          {loadingWatchlist ? (
+            <span
+              className="
+                w-3.5
+                h-3.5
+                border-2
+                border-white/20
+                border-t-transparent
+                rounded-full
+                animate-spin
+              "
+              style={{ opacity: 0.6 }}
+            />
+          ) : (
+            <BookmarkIcon
+              filled={watchlisted}
+              className="w-3.5 h-3.5"
+            />
+          )}
         </button>
 
       </div>

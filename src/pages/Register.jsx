@@ -1,9 +1,12 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+
+import { isSupabaseConfigured } from "../lib/supabaseClient";
+import { signUpWithEmail } from "../lib/auth";
+
+import AuthBackdrop from "../components/AuthBackdrop";
 
 function Register() {
-  const navigate = useNavigate();
-
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -34,167 +37,248 @@ function Register() {
       return;
     }
 
+    if (!isSupabaseConfigured()) {
+      setError(
+        "Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local."
+      );
+      return;
+    }
+
     try {
       setLoading(true);
 
-      const response = await fetch("/api/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          username,
-          email,
-          password,
-        }),
+      const { data, error: signUpError } = await signUpWithEmail({
+        email,
+        password,
+        username,
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.message || "Registration failed.");
+      if (signUpError) {
+        setError(
+          signUpError.message || "Unable to create your account. Please try again."
+        );
         return;
       }
 
-      setSuccess("Account created successfully!");
+      if (!data?.user) {
+        setError("Unable to create your account. Please try again.");
+        return;
+      }
 
-      setTimeout(() => {
-        navigate("/login");
-      }, 1000);
-    } catch (error) {
-      console.error("Register error:", error);
+      setSuccess("Check your email to verify your account.");
+    } catch (registerError) {
+      console.error("Register error:", registerError);
 
-      setError(
-        "Unable to connect to CINEWorld server. Please try again."
-      );
+      setError("Unable to create your account. Please try again.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center px-6 py-12">
-      <div className="w-full max-w-md">
+    <main className="relative min-h-screen bg-black text-white flex items-center justify-center px-6 py-14 overflow-hidden">
+      <AuthBackdrop />
 
-        <div className="text-center mb-8">
-          <Link
-            to="/"
-            className="text-3xl font-bold text-white"
-          >
-            CINE
-            <span className="text-red-500">
-              World
-            </span>
-          </Link>
+      <div className="relative z-20 w-full max-w-sm">
 
-          <h1 className="text-white text-3xl font-bold mt-8">
-            Create Account
+        {/* ==========================================
+            CARD SIDE GLOWS (cinematic bloom)
+        ========================================== */}
+
+        <div
+          aria-hidden="true"
+          className="absolute -left-12 sm:-left-16 top-1/2 -translate-y-1/2 w-20 sm:w-24 h-2/3 rounded-full bg-red-600/25 blur-3xl pointer-events-none"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute -right-12 sm:-right-16 top-1/2 -translate-y-1/2 w-20 sm:w-24 h-2/3 rounded-full bg-red-600/25 blur-3xl pointer-events-none"
+        />
+
+        <div className="text-center mb-6">
+          <h1 className="text-xl font-semibold">
+            Create your account
           </h1>
 
-          <p className="text-gray-500 mt-2">
-            Join CINEWorld today
+          <p className="text-sm text-gray-500 mt-1.5">
+            Join CINEWorld and start building your watchlist.
           </p>
         </div>
 
         <form
           onSubmit={handleRegister}
-          className="bg-zinc-950 border border-white/10 rounded-2xl p-7 space-y-5"
+          className="
+            bg-zinc-950/90
+            backdrop-blur
+            border
+            border-white/10
+            rounded-2xl
+            p-5
+            shadow-2xl
+            shadow-black/70
+            ring-1
+            ring-black/40
+          "
         >
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg px-4 py-3 text-sm">
+            <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg px-4 py-3 text-sm mb-4">
               {error}
             </div>
           )}
 
           {success && (
-            <div className="bg-green-500/10 border border-green-500/20 text-green-400 rounded-lg px-4 py-3 text-sm">
+            <div className="bg-green-500/10 border border-green-500/20 text-green-400 rounded-lg px-4 py-3 text-sm mb-4">
               {success}
             </div>
           )}
 
-          <div>
-            <label className="block text-gray-300 text-sm mb-2">
-              Username
-            </label>
+          <div className="space-y-4">
 
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter username"
-              className="w-full bg-zinc-900 border border-white/10 rounded-lg px-4 py-3 text-white outline-none focus:border-red-500"
-            />
-          </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">
+                Username
+              </label>
 
-          <div>
-            <label className="block text-gray-300 text-sm mb-2">
-              Email
-            </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) =>
+                  setUsername(e.target.value)
+                }
+                placeholder="Enter username"
+                className="
+                  w-full
+                  bg-black
+                  border
+                  border-white/10
+                  rounded-lg
+                  px-4
+                  py-3
+                  text-white
+                  outline-none
+                  focus:border-red-500
+                "
+              />
+            </div>
 
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter email"
-              className="w-full bg-zinc-900 border border-white/10 rounded-lg px-4 py-3 text-white outline-none focus:border-red-500"
-            />
-          </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">
+                Email
+              </label>
 
-          <div>
-            <label className="block text-gray-300 text-sm mb-2">
-              Password
-            </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) =>
+                  setEmail(e.target.value)
+                }
+                placeholder="Enter email"
+                className="
+                  w-full
+                  bg-black
+                  border
+                  border-white/10
+                  rounded-lg
+                  px-4
+                  py-3
+                  text-white
+                  outline-none
+                  focus:border-red-500
+                "
+              />
+            </div>
 
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter password"
-              className="w-full bg-zinc-900 border border-white/10 rounded-lg px-4 py-3 text-white outline-none focus:border-red-500"
-            />
-          </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">
+                Password
+              </label>
 
-          <div>
-            <label className="block text-gray-300 text-sm mb-2">
-              Confirm Password
-            </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) =>
+                  setPassword(e.target.value)
+                }
+                placeholder="Enter password"
+                className="
+                  w-full
+                  bg-black
+                  border
+                  border-white/10
+                  rounded-lg
+                  px-4
+                  py-3
+                  text-white
+                  outline-none
+                  focus:border-red-500
+                "
+              />
+            </div>
 
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) =>
-                setConfirmPassword(e.target.value)
-              }
-              placeholder="Confirm password"
-              className="w-full bg-zinc-900 border border-white/10 rounded-lg px-4 py-3 text-white outline-none focus:border-red-500"
-            />
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">
+                Confirm Password
+              </label>
+
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) =>
+                  setConfirmPassword(e.target.value)
+                }
+                placeholder="Confirm password"
+                className="
+                  w-full
+                  bg-black
+                  border
+                  border-white/10
+                  rounded-lg
+                  px-4
+                  py-3
+                  text-white
+                  outline-none
+                  focus:border-red-500
+                "
+              />
+            </div>
+
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition"
+            className="
+              w-full
+              mt-5
+              bg-red-600
+              hover:bg-red-700
+              disabled:opacity-50
+              text-white
+              font-semibold
+              py-3
+              rounded-lg
+              transition
+            "
           >
             {loading
               ? "Creating Account..."
               : "Create Account"}
           </button>
 
-          <p className="text-center text-gray-500 text-sm">
+          <p className="text-center text-gray-500 text-sm mt-5">
             Already have an account?{" "}
 
             <Link
               to="/login"
               className="text-red-500 hover:text-red-400"
             >
-              Login
+              Sign in
             </Link>
           </p>
 
         </form>
       </div>
-    </div>
+    </main>
   );
 }
 

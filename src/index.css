@@ -1,10 +1,100 @@
 @import "tailwindcss";
 
 /* =========================================
+   ANIMATION TOKENS
+========================================= */
+
+@theme {
+  --animate-drift: drift 26s ease-in-out infinite alternate;
+  --animate-search-in: search-in 0.22s ease-out both;
+  --animate-search-out: search-out 0.2s ease-in both;
+
+  @keyframes drift {
+    0% {
+      transform: scale(1) translate3d(0, 0, 0);
+    }
+
+    100% {
+      transform: scale(1.06) translate3d(-0.9%, -0.7%, 0);
+    }
+  }
+
+  @keyframes search-in {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes search-out {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    to {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+  }
+}
+
+/* =========================================
+   HERO FEATURED BLEND
+   The featured backdrop is full-bleed; a CSS
+   mask melts its edges into the black hero so
+   there is no visible rectangular boundary.
+   Mobile/tablet: vertical fade (image sits dark
+   behind the text). Desktop: horizontal dissolve
+   opening on the right side of the hero.
+========================================= */
+
+.feature-mask {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.6) 0%,
+    #000 32%,
+    #000 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.6) 0%,
+    #000 32%,
+    #000 100%
+  );
+}
+
+@media (min-width: 1024px) {
+  .feature-mask {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0.35) 35%,
+      #000 62%,
+      #000 100%
+    );
+    mask-image: linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0.35) 35%,
+      #000 62%,
+      #000 100%
+    );
+  }
+}
+
+/* =========================================
    GLOBAL RESET
 ========================================= */
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -17,11 +107,51 @@ body,
   min-height: 100%;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  line-height: 1.5;
+}
+
 body {
   background: #000;
   color: #fff;
   font-family: Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* =========================================
+   SHARED CONTENT CONTAINER
+   One consistent desktop container for the
+   navbar, hero and homepage rows so every
+   section aligns on the same grid across
+   Chrome, Firefox and Edge.
+========================================= */
+
+.container-cw {
+  width: 100%;
+  max-width: 1500px;
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+}
+
+/* =========================================
+   HERO HEIGHT
+   Grows with viewport height instead of
+   relying on browser-specific fixed pixels.
+   Falls back to the px utilities when dvh is
+   unsupported.
+========================================= */
+
+.hero-section {
+  min-height: max(480px, calc(100dvh - 6.5rem));
+}
+
+@media (min-width: 1024px) {
+  .hero-section {
+    min-height: max(560px, calc(100dvh - 4rem));
+  }
 }
 
 /* =========================================
@@ -35,6 +165,8 @@ a {
 
 /* =========================================
    FORM ELEMENTS
+   Normalize browser-specific default button
+   and input typography/appearance.
 ========================================= */
 
 button,
@@ -42,6 +174,13 @@ input,
 textarea,
 select {
   font-family: inherit;
+  font-size: 100%;
+  line-height: inherit;
+}
+
+button {
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 /* =========================================
