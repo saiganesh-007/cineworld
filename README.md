@@ -295,15 +295,17 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 ---
 
-## 👤 Author
+## 👥 Owners
 
 **Sai Ganesh**
-
 - **GitHub:** [@saiganesh-007](https://github.com/saiganesh-007)
 - **LinkedIn:** [Sai Ganesh](https://www.linkedin.com/in/saiganesh00007/)
 
-**Collaborator:** [@shahidyellow22-codehub](https://github.com/shahidyellow22-codehub)
+**Shahid**
+- **GitHub:** [@shahidyellow22-codehub](https://github.com/shahidyellow22-codehub)
 
 ---
+
+Built by **Sai Ganesh & Shahid**
 
 *Movies. Anime. Dramas. Web Series. One place.*
