@@ -2,7 +2,9 @@
 // TMDB CONFIG
 // ==========================================
 
-const API_KEY = "c50d1c37427cf55096e70f64594a7896";
+const API_KEY =
+  import.meta.env.VITE_TMDB_API_KEY ||
+  "c50d1c37427cf55096e70f64594a7896";
 
 const BASE_URL = "https://api.themoviedb.org/3";
 

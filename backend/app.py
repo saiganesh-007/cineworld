@@ -46,7 +46,16 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 # FLASK CONFIGURATION
 # ==========================================
 
-CORS(app)
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS")
+
+if ALLOWED_ORIGINS:
+    CORS(app, origins=[
+        origin.strip()
+        for origin in ALLOWED_ORIGINS.split(",")
+        if origin.strip()
+    ])
+else:
+    CORS(app)
 
 db.init_app(app)
 
