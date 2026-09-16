@@ -2,7 +2,8 @@ import os
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from models import db, User, Favorite, Watchlist
+
+from backend.models import db, User, Favorite, Watchlist
 
 
 app = Flask(__name__)
@@ -16,6 +17,15 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
     DATABASE_URL = "sqlite:///cineworld.db"
+
+# PostgreSQL URLs sometimes start with postgres://
+# SQLAlchemy expects postgresql://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace(
+        "postgres://",
+        "postgresql://",
+        1
+    )
 
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -44,7 +54,6 @@ with app.app_context():
 
 @app.route("/api/test", methods=["GET"])
 def test():
-
     return jsonify({
         "success": True,
         "message": "CINEWorld backend is working"
@@ -65,7 +74,6 @@ def register():
     password = data.get("password")
 
     if not username or not email or not password:
-
         return jsonify({
             "success": False,
             "message": "All fields are required"
@@ -77,7 +85,6 @@ def register():
     ).first()
 
     if existing_user:
-
         return jsonify({
             "success": False,
             "message": "Username or email already exists"
@@ -94,18 +101,14 @@ def register():
     db.session.commit()
 
     return jsonify({
-
         "success": True,
-
         "message": "Account created successfully",
-
         "user": {
             "id": user.id,
             "username": user.username,
             "email": user.email,
             "profile_pic": user.profile_pic
         }
-
     }), 201
 
 
@@ -122,7 +125,6 @@ def login():
     password = data.get("password")
 
     if not email or not password:
-
         return jsonify({
             "success": False,
             "message": "Email and password are required"
@@ -133,32 +135,26 @@ def login():
     ).first()
 
     if not user:
-
         return jsonify({
             "success": False,
             "message": "Invalid email or password"
         }), 401
 
     if not user.check_password(password):
-
         return jsonify({
             "success": False,
             "message": "Invalid email or password"
         }), 401
 
     return jsonify({
-
         "success": True,
-
         "message": "Login successful",
-
         "user": {
             "id": user.id,
             "username": user.username,
             "email": user.email,
             "profile_pic": user.profile_pic
         }
-
     }), 200
 
 
@@ -172,23 +168,19 @@ def get_user(user_id):
     user = User.query.get(user_id)
 
     if not user:
-
         return jsonify({
             "success": False,
             "message": "User not found"
         }), 404
 
     return jsonify({
-
         "success": True,
-
         "user": {
             "id": user.id,
             "username": user.username,
             "email": user.email,
             "profile_pic": user.profile_pic
         }
-
     })
 
 
@@ -202,7 +194,6 @@ def delete_account(user_id):
     user = User.query.get(user_id)
 
     if not user:
-
         return jsonify({
             "success": False,
             "message": "User not found"
@@ -217,14 +208,11 @@ def delete_account(user_id):
     ).delete()
 
     db.session.delete(user)
-
     db.session.commit()
 
     return jsonify({
-
         "success": True,
         "message": "Account deleted successfully"
-
     })
 
 
@@ -244,7 +232,6 @@ def add_favorite():
     poster_path = data.get("poster_path")
 
     if not user_id or not movie_id or not media_type or not title:
-
         return jsonify({
             "success": False,
             "message": "Missing required fields"
@@ -253,57 +240,44 @@ def add_favorite():
     user = User.query.get(user_id)
 
     if not user:
-
         return jsonify({
             "success": False,
             "message": "User not found"
         }), 404
 
     existing = Favorite.query.filter_by(
-
         user_id=user_id,
         movie_id=movie_id,
         media_type=media_type
-
     ).first()
 
     if existing:
-
         return jsonify({
             "success": False,
             "message": "Already in favorites"
         }), 409
 
     favorite = Favorite(
-
         user_id=user_id,
         movie_id=movie_id,
         media_type=media_type,
         title=title,
         poster_path=poster_path
-
     )
 
     db.session.add(favorite)
-
     db.session.commit()
 
     return jsonify({
-
         "success": True,
-
         "message": "Added to favorites",
-
         "favorite": {
-
             "id": favorite.id,
             "movie_id": favorite.movie_id,
             "media_type": favorite.media_type,
             "title": favorite.title,
             "poster_path": favorite.poster_path
-
         }
-
     }), 201
 
 
@@ -321,11 +295,8 @@ def get_favorites(user_id):
     ).all()
 
     return jsonify({
-
         "success": True,
-
         "favorites": [
-
             {
                 "id": item.id,
                 "movie_id": item.movie_id,
@@ -333,11 +304,8 @@ def get_favorites(user_id):
                 "title": item.title,
                 "poster_path": item.poster_path
             }
-
             for item in favorites
-
         ]
-
     })
 
 
@@ -351,21 +319,17 @@ def remove_favorite(favorite_id):
     favorite = Favorite.query.get(favorite_id)
 
     if not favorite:
-
         return jsonify({
             "success": False,
             "message": "Favorite not found"
         }), 404
 
     db.session.delete(favorite)
-
     db.session.commit()
 
     return jsonify({
-
         "success": True,
         "message": "Removed from favorites"
-
     })
 
 
@@ -385,7 +349,6 @@ def add_watchlist():
     poster_path = data.get("poster_path")
 
     if not user_id or not movie_id or not media_type or not title:
-
         return jsonify({
             "success": False,
             "message": "Missing required fields"
@@ -394,57 +357,44 @@ def add_watchlist():
     user = User.query.get(user_id)
 
     if not user:
-
         return jsonify({
             "success": False,
             "message": "User not found"
         }), 404
 
     existing = Watchlist.query.filter_by(
-
         user_id=user_id,
         movie_id=movie_id,
         media_type=media_type
-
     ).first()
 
     if existing:
-
         return jsonify({
             "success": False,
             "message": "Already in watchlist"
         }), 409
 
     item = Watchlist(
-
         user_id=user_id,
         movie_id=movie_id,
         media_type=media_type,
         title=title,
         poster_path=poster_path
-
     )
 
     db.session.add(item)
-
     db.session.commit()
 
     return jsonify({
-
         "success": True,
-
         "message": "Added to watchlist",
-
         "watchlist": {
-
             "id": item.id,
             "movie_id": item.movie_id,
             "media_type": item.media_type,
             "title": item.title,
             "poster_path": item.poster_path
-
         }
-
     }), 201
 
 
@@ -462,11 +412,8 @@ def get_watchlist(user_id):
     ).all()
 
     return jsonify({
-
         "success": True,
-
         "watchlist": [
-
             {
                 "id": item.id,
                 "movie_id": item.movie_id,
@@ -474,11 +421,8 @@ def get_watchlist(user_id):
                 "title": item.title,
                 "poster_path": item.poster_path
             }
-
             for item in items
-
         ]
-
     })
 
 
@@ -492,21 +436,17 @@ def remove_watchlist(item_id):
     item = Watchlist.query.get(item_id)
 
     if not item:
-
         return jsonify({
             "success": False,
             "message": "Watchlist item not found"
         }), 404
 
     db.session.delete(item)
-
     db.session.commit()
 
     return jsonify({
-
         "success": True,
         "message": "Removed from watchlist"
-
     })
 
 
@@ -515,9 +455,8 @@ def remove_watchlist(item_id):
 # ==========================================
 
 if __name__ == "__main__":
-
     app.run(
-        host="127.0.0.1",
+        host="0.0.0.0",
         port=5001,
         debug=True
     )
