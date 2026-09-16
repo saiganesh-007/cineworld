@@ -37,20 +37,17 @@ function Register() {
     try {
       setLoading(true);
 
-      const response = await fetch(
-        "http://127.0.0.1:5001/api/register",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            username: username,
-            email: email,
-            password: password,
-          }),
-        }
-      );
+      const response = await fetch("/api/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username,
+          email,
+          password,
+        }),
+      });
 
       const data = await response.json();
 
@@ -66,7 +63,10 @@ function Register() {
       }, 1000);
     } catch (error) {
       console.error("Register error:", error);
-      setError("Unable to connect to CINEWorld server.");
+
+      setError(
+        "Unable to connect to CINEWorld server. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -81,7 +81,10 @@ function Register() {
             to="/"
             className="text-3xl font-bold text-white"
           >
-            CINE<span className="text-red-500">World</span>
+            CINE
+            <span className="text-red-500">
+              World
+            </span>
           </Link>
 
           <h1 className="text-white text-3xl font-bold mt-8">
@@ -160,7 +163,9 @@ function Register() {
             <input
               type="password"
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+              onChange={(e) =>
+                setConfirmPassword(e.target.value)
+              }
               placeholder="Confirm password"
               className="w-full bg-zinc-900 border border-white/10 rounded-lg px-4 py-3 text-white outline-none focus:border-red-500"
             />
@@ -171,7 +176,9 @@ function Register() {
             disabled={loading}
             className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition"
           >
-            {loading ? "Creating Account..." : "Create Account"}
+            {loading
+              ? "Creating Account..."
+              : "Create Account"}
           </button>
 
           <p className="text-center text-gray-500 text-sm">

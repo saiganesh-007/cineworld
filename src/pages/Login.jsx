@@ -22,21 +22,16 @@ function Login() {
     try {
       setLoading(true);
 
-      const response = await fetch(
-        "http://127.0.0.1:5001/api/login",
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type": "application/json",
-          },
-
-          body: JSON.stringify({
-            email,
-            password,
-          }),
-        }
-      );
+      const response = await fetch("/api/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
 
       const data = await response.json();
 
@@ -45,34 +40,21 @@ function Login() {
         return;
       }
 
-      // ==========================================
-      // SAVE LOGGED-IN USER
-      // ==========================================
-
       localStorage.setItem(
         "cineworld_user",
         JSON.stringify(data.user)
       );
 
-      // ==========================================
-      // TELL NAVBAR LOGIN HAPPENED
-      // ==========================================
-
       window.dispatchEvent(
         new Event("cineworld-login")
       );
 
-      // ==========================================
-      // GO TO HOME
-      // ==========================================
-
       navigate("/");
-
     } catch (error) {
       console.error("Login error:", error);
 
       setError(
-        "Unable to connect to CINEWorld server."
+        "Unable to connect to CINEWorld server. Please try again."
       );
     } finally {
       setLoading(false);
@@ -81,13 +63,9 @@ function Login() {
 
   return (
     <main className="min-h-screen bg-black text-white flex items-center justify-center px-6">
-
       <div className="w-full max-w-md">
 
-        {/* LOGO */}
-
         <div className="text-center mb-8">
-
           <Link
             to="/"
             className="text-3xl font-bold"
@@ -105,10 +83,7 @@ function Login() {
           <p className="text-gray-500 mt-2">
             Login to your CINEWorld account
           </p>
-
         </div>
-
-        {/* LOGIN FORM */}
 
         <form
           onSubmit={handleSubmit}
@@ -121,10 +96,7 @@ function Login() {
           "
         >
 
-          {/* EMAIL */}
-
           <div className="mb-5">
-
             <label className="block text-sm text-gray-400 mb-2">
               Email
             </label>
@@ -149,13 +121,9 @@ function Login() {
                 focus:border-red-500
               "
             />
-
           </div>
 
-          {/* PASSWORD */}
-
-          <div className="mb-5">
-
+          <div className="mb-3">
             <label className="block text-sm text-gray-400 mb-2">
               Password
             </label>
@@ -180,18 +148,26 @@ function Login() {
                 focus:border-red-500
               "
             />
-
           </div>
 
-          {/* ERROR */}
+          <div className="text-right mb-5">
+            <Link
+              to="/forgot-password"
+              className="
+                text-sm
+                text-red-500
+                hover:text-red-400
+              "
+            >
+              Forgot password?
+            </Link>
+          </div>
 
           {error && (
             <div className="text-red-400 text-sm mb-4">
               {error}
             </div>
           )}
-
-          {/* LOGIN BUTTON */}
 
           <button
             type="submit"
@@ -208,15 +184,10 @@ function Login() {
               transition
             "
           >
-            {loading
-              ? "Logging in..."
-              : "Login"}
+            {loading ? "Logging in..." : "Login"}
           </button>
 
-          {/* REGISTER */}
-
           <p className="text-center text-gray-500 text-sm mt-6">
-
             Don't have an account?{" "}
 
             <Link
@@ -225,13 +196,10 @@ function Login() {
             >
               Create one
             </Link>
-
           </p>
 
         </form>
-
       </div>
-
     </main>
   );
 }
