@@ -25,6 +25,8 @@ export function SavedItemsProvider({ children }) {
   const [savedError, setSavedError] = useState(null);
 
   const loadedForUserRef = useRef(null);
+  const retryUsedRef = useRef(false);
+  const retryTimerRef = useRef(null);
 
   const loadSavedItems = useCallback(async () => {
     try {
@@ -37,13 +39,17 @@ export function SavedItemsProvider({ children }) {
       setFavorites(favoritesData.favorites || []);
       setWatchlist(watchlistData.watchlist || []);
       setSavedError(null);
+      return true;
     } catch (error) {
+      // 401 => not signed in; treat as clean instead of an error.
       if (error.status === 401) {
         setFavorites([]);
         setWatchlist([]);
-      } else {
-        setSavedError("Unable to load saved items.");
+        setSavedError(null);
+        return true;
       }
+
+      return false;
     }
   }, []);
 
@@ -56,6 +62,12 @@ export function SavedItemsProvider({ children }) {
   useEffect(() => {
     let active = true;
 
+    function finish() {
+      if (active) {
+        setStatus("ready");
+      }
+    }
+
     const unsubscribe = subscribeToAuthSession((nextSession) => {
       if (!active) {
         return;
@@ -67,6 +79,8 @@ export function SavedItemsProvider({ children }) {
 
       if (!nextSession) {
         loadedForUserRef.current = null;
+        retryUsedRef.current = false;
+        retryTimerRef.current = null;
         setFavorites([]);
         setWatchlist([]);
         setSavedError(null);
@@ -80,17 +94,57 @@ export function SavedItemsProvider({ children }) {
       }
 
       loadedForUserRef.current = userId;
+      retryUsedRef.current = false;
       setStatus("loading");
+      setSavedError(null);
 
-      loadSavedItems().finally(() => {
-        if (active) {
-          setStatus("ready");
+      loadSavedItems().then((ok) => {
+        if (!active) {
+          return;
+        }
+
+        if (ok) {
+          finish();
+          return;
+        }
+
+        // One automatic retry after a short delay. If it fails too,
+        // surface a small inline message. No retry loop, no spam.
+        if (!retryUsedRef.current) {
+          retryUsedRef.current = true;
+
+          retryTimerRef.current = setTimeout(() => {
+            loadSavedItems().then((secondOk) => {
+              if (!active) {
+                return;
+              }
+
+              if (!secondOk) {
+                setSavedError(
+                  "Saved items couldn't be loaded right now."
+                );
+              }
+
+              finish();
+            });
+          }, 2000);
+        } else {
+          setSavedError(
+            "Saved items couldn't be loaded right now."
+          );
+          finish();
         }
       });
     });
 
     return () => {
       active = false;
+
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+
       unsubscribe();
     };
   }, [loadSavedItems]);

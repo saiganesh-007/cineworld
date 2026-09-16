@@ -1,7 +1,33 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
+import PosterGridSkeleton from "../components/PosterGridSkeleton";
+
 import { useSavedItems } from "../context/SavedItemsContext";
+
+// ==========================================
+// ICONS
+// ==========================================
+
+function HeartIcon({ className = "" }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+    </svg>
+  );
+}
+
+// ==========================================
+// FAVORITES
+// ==========================================
 
 function Favorites() {
   const {
@@ -10,7 +36,6 @@ function Favorites() {
     favorites,
     savedError,
     removeFavorite,
-    refreshSavedItems,
   } = useSavedItems();
 
   const [loggedOut, setLoggedOut] = useState(false);
@@ -28,26 +53,13 @@ function Favorites() {
     try {
       await removeFavorite(item.movie_id, item.media_type);
       setError("");
-    } catch (error) {
-      if (error.status === 401) {
+    } catch (err) {
+      if (err.status === 401) {
         setLoggedOut(true);
       } else {
-        console.error("Remove favorite error:", error);
-        setError("Unable to remove favorite.");
+        console.error("Remove favorite error:", err);
+        setError("Couldn't remove that item right now.");
       }
-    }
-  }
-
-  // ==========================================
-  // RETRY
-  // ==========================================
-
-  async function handleRetry() {
-    setError("");
-    try {
-      await refreshSavedItems();
-    } catch (err) {
-      setError("Unable to load favorites.");
     }
   }
 
@@ -57,11 +69,11 @@ function Favorites() {
 
   if (loggedOut || (status === "ready" && !isAuthenticated)) {
     return (
-      <div className="min-h-screen bg-black text-white px-6 py-10">
+      <div className="bg-black text-white px-6 py-10">
         <div className="max-w-7xl mx-auto text-center py-20">
 
           <h1 className="text-4xl font-bold mb-4">
-            ❤️ My Favorites
+            My Favorites
           </h1>
 
           <p className="text-gray-400 mb-6">
@@ -70,7 +82,7 @@ function Favorites() {
 
           <Link
             to="/login"
-            className="inline-block bg-red-600 hover:bg-red-700 px-6 py-3 rounded-lg font-semibold"
+            className="inline-block bg-red-600 hover:bg-red-700 px-6 py-3 rounded-lg font-semibold transition"
           >
             Login
           </Link>
@@ -85,42 +97,23 @@ function Favorites() {
   // ==========================================
 
   return (
-    <div className="min-h-screen bg-black text-white px-6 py-10">
+    <div className="bg-black text-white px-6 py-10">
 
       <div className="max-w-7xl mx-auto">
 
-        <h1 className="text-4xl font-bold mb-8">
-          ❤️ My Favorites
+        <h1 className="text-4xl font-bold mb-2">
+          My Favorites
         </h1>
+
+        {displayError && (
+          <p className="mb-6 text-sm text-red-400/90">
+            {displayError}
+          </p>
+        )}
 
         {/* LOADING */}
 
-        {loading && (
-          <div className="text-center py-20">
-            <p className="text-gray-400 text-lg">
-              Loading favorites...
-            </p>
-          </div>
-        )}
-
-        {/* ERROR */}
-
-        {!loading && displayError && (
-          <div className="text-center py-20">
-
-            <p className="text-red-400 text-lg">
-              {displayError}
-            </p>
-
-            <button
-              onClick={handleRetry}
-              className="mt-4 bg-red-600 hover:bg-red-700 px-5 py-2 rounded-lg"
-            >
-              Try Again
-            </button>
-
-          </div>
-        )}
+        {loading && <PosterGridSkeleton />}
 
         {/* EMPTY */}
 
@@ -129,23 +122,31 @@ function Favorites() {
           favorites.length === 0 && (
             <div className="text-center py-20">
 
-              <p className="text-gray-400 text-lg">
-                You haven't added anything to Favorites yet.
+              <HeartIcon className="w-10 h-10 mx-auto mb-5 text-gray-700" />
+
+              <h2 className="text-white text-xl font-semibold">
+                No favorites yet
+              </h2>
+
+              <p className="text-gray-400 mt-2 max-w-md mx-auto">
+                Save movies, anime and series you love and
+                they'll appear here.
               </p>
 
-              <p className="text-gray-600 mt-2">
-                Add movies or web series using ❤️
-              </p>
+              <Link
+                to="/movies"
+                className="inline-block mt-7 bg-red-600 hover:bg-red-700 px-6 py-3 rounded-lg font-semibold transition"
+              >
+                Explore Movies
+              </Link>
 
             </div>
           )}
 
-        {/* FAVORITES */}
+        {/* ERROR + EXISTING ITEMS */}
 
         {!loading &&
-          !displayError &&
-          favorites.length > 0 && (
-
+          (displayError || favorites.length > 0) && (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
 
               {favorites.map((item) => {
@@ -214,7 +215,7 @@ function Favorites() {
                       onClick={() => handleRemove(item)}
                       className="w-full mt-3 bg-red-600/20 border border-red-500/30 hover:bg-red-600 hover:text-white text-red-400 py-2 rounded-lg font-semibold transition"
                     >
-                      Remove ❤️
+                      Remove
                     </button>
 
                   </div>

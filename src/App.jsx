@@ -5,6 +5,7 @@ import SavedItemsProvider from "./context/SavedItemsContext";
 import Navbar from "./components/Navbar";
 import AuthHeader from "./components/AuthHeader";
 import SmoothScroll from "./components/SmoothScroll";
+import Footer from "./components/Footer";
 
 import Home from "./pages/Home";
 import Movies from "./pages/Movies";
@@ -84,15 +85,26 @@ function AppShell() {
   );
 
   return (
-    <>
-      {isAuthPage ? <AuthHeader /> : <Navbar />}
-
+    <div className="flex min-h-screen flex-col bg-black">
       {isAuthPage ? (
-        routesElement
+        <>
+          <AuthHeader />
+          <div className="flex-1">
+            {routesElement}
+          </div>
+        </>
       ) : (
-        <SmoothScroll>{routesElement}</SmoothScroll>
+        <>
+          <Navbar />
+          <SmoothScroll>
+            <main className="flex-1">
+              {routesElement}
+            </main>
+          </SmoothScroll>
+          <Footer />
+        </>
       )}
-    </>
+    </div>
   );
 }
 
